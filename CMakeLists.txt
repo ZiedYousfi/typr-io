@@ -218,6 +218,13 @@ if(TYPR_IO_BUILD_TESTS)
             add_test(NAME typr-io-consumer-help COMMAND typr-io-test-consumer --help)
         endif()
     endif()
+
+    # If a `tests` subdirectory exists, include it to build unit tests (Catch2)
+    # This allows building more comprehensive unit tests without impacting the
+    # lightweight smoke tests above.
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+        add_subdirectory(tests)
+    endif()
 endif()
 
 # Convenience target to copy compile_commands.json from the build dir to the
