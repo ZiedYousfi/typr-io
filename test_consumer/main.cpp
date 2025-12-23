@@ -21,10 +21,13 @@ int main(int argc, char **argv) {
   if (argc <= 1) {
     std::cout
         << "Usage:\n"
-        << "  --type <text>    : inject text (if supported)\n"
-        << "  --tap <KEYNAME>  : tap the named key (e.g., A, Enter, F1)\n"
-        << "  --listen <secs>  : listen for global key events for N seconds\n"
-        << "  --help           : show this help\n";
+        << "  --type <text>         : inject text (if supported)\n"
+        << "  --tap <KEYNAME>       : tap the named key (e.g., A, Enter, F1)\n"
+        << "  --listen <secs>       : listen for global key events for N "
+           "seconds\n"
+        << "  --request-permissions : attempt to request runtime platform "
+           "permissions (e.g., macOS Accessibility)\n"
+        << "  --help                : show this help\n";
     return 0;
   }
 
@@ -68,6 +71,36 @@ int main(int argc, char **argv) {
       std::cout << "Tapping key: " << typr::io::keyToString(k) << "\n";
       bool ok = sender.tap(k);
       std::cout << (ok ? "-> Success\n" : "-> Failed\n");
+
+    } else if (arg == "--request-permissions") {
+      std::cout << "Requesting runtime permissions (may prompt the OS)...\n";
+      bool permOk = sender.requestPermissions();
+      std::cout
+          << (permOk
+                  ? "-> Sender reports ready to inject\n"
+                  : "-> Sender reports not ready (permission not granted?)\n");
+      auto newCaps = sender.capabilities();
+      std::cout << "  canInjectKeys: " << (newCaps.canInjectKeys ? "yes" : "no")
+                << "\n";
+      std::cout << "  canInjectText: " << (newCaps.canInjectText ? "yes" : "no")
+                << "\n";
+      std::cout << "  canSimulateHID: "
+                << (newCaps.canSimulateHID ? "yes" : "no") << "\n\n";
+
+      std::cout << "Attempting to start a Listener to check Input Monitoring "
+                   "permission...\n";
+      {
+        typr::io::Listener tmpListener;
+        bool started = tmpListener.start(
+            [](char32_t, typr::io::Key, typr::io::Modifier, bool) {});
+        if (!started) {
+          std::cout << "-> Listener failed to start (Input Monitoring "
+                       "permission may be required on macOS).\n";
+        } else {
+          std::cout << "-> Listener started successfully.\n";
+          tmpListener.stop();
+        }
+      }
 
     } else if (arg == "--listen") {
       if (i + 1 >= argc) {

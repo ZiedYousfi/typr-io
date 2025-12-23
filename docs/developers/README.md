@@ -140,6 +140,7 @@ Before opening a PR:
 
 - macOS:
   - Accessibility and Input Monitoring permissions can block injection or listening. `requestPermissions()` can prompt for Accessibility permission where applicable, but some permissions require user action in Settings.
+  - For local preparation, the repository includes a helper task ("Prepare integration tests (request permissions)") (see `.zed/tasks.json`) that runs `./build/typr_io_consumer --request-permissions` to trigger runtime permission prompts after building the consumer.
   - Use `.mm` files for Objective-C++ code that needs macOS system APIs.
 - Linux:
   - uinput requires correct `/dev/uinput` permissions. Common guidance:
