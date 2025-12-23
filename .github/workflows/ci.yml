@@ -6,9 +6,9 @@ name: CI
 # be executed via the manual `integration-tests` workflow when desired.
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   build-and-test:
@@ -38,6 +38,14 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           choco install -y cmake
+
+      - name: Clean stale build directory (Unix)
+        if: runner.os != 'Windows'
+        run: rm -rf build
+
+      - name: Clean stale build directory (Windows)
+        if: runner.os == 'Windows'
+        run: powershell -Command "Remove-Item -Path build -Recurse -Force -ErrorAction SilentlyContinue"
 
       - name: Configure (CMake)
         run: cmake -S . -B build -DTYPR_IO_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release

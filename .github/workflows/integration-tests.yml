@@ -15,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       interactive:
-        description: 'Run tests in interactive mode (set to true to enable interactive prompts)'
+        description: "Run tests in interactive mode (set to true to enable interactive prompts)"
         required: false
-        default: 'false'
+        default: "false"
 
 jobs:
   integration:
@@ -28,14 +28,14 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     env:
       # Always enable integration tests for this workflow
-      TYPR_IO_RUN_INTEGRATION_TESTS: '1'
+      TYPR_IO_RUN_INTEGRATION_TESTS: "1"
       # Default to auto-confirm (so the workflow is non-interactive by default)
-      TYPR_IO_AUTO_CONFIRM: '1'
+      TYPR_IO_AUTO_CONFIRM: "1"
       # Pass through the interactive input (string 'true'/'false'); the test
       # helper recognizes '1', 'true', 'yes' as enabled.
       TYPR_IO_INTERACTIVE: ${{ github.event.inputs.interactive }}
       # For Linux (Xvfb) we'll use :99; harmless to set on macOS too.
-      DISPLAY: ':99'
+      DISPLAY: ":99"
 
     steps:
       - name: Checkout repository
@@ -64,6 +64,14 @@ jobs:
           # Start Xvfb in the background so GUI-related injection can run.
           Xvfb :99 -screen 0 1024x768x24 & sleep 2
 
+      - name: Clean stale build directory (Unix)
+        if: runner.os != 'Windows'
+        run: rm -rf build
+
+      - name: Clean stale build directory (Windows)
+        if: runner.os == 'Windows'
+        run: powershell -Command "Remove-Item -Path build -Recurse -Force -ErrorAction SilentlyContinue"
+
       - name: Configure (CMake)
         run: cmake -S . -B build -DTYPR_IO_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
 
@@ -76,7 +84,7 @@ jobs:
           TYPR_IO_AUTO_CONFIRM: ${{ env.TYPR_IO_AUTO_CONFIRM }}
           TYPR_IO_INTERACTIVE: ${{ env.TYPR_IO_INTERACTIVE }}
           DISPLAY: ${{ env.DISPLAY }}
-          CTEST_OUTPUT_ON_FAILURE: '1'
+          CTEST_OUTPUT_ON_FAILURE: "1"
         run: |
           # Run the unit/integration test executable (it contains gated integration tests).
           ctest --test-dir build --output-on-failure -R typr-io-unit-tests
