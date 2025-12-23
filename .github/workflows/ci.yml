@@ -163,8 +163,8 @@ jobs:
 
   # Windows / ARM64
   build-windows-arm64:
-    name: Build and test on windows-latest (arm64)
-    runs-on: windows-latest
+    name: Build and test on windows-11-arm (arm64)
+    runs-on: windows-11-arm
 
     steps:
       - name: Checkout repository

@@ -300,13 +300,13 @@ jobs:
           path: ${{ steps.find-integration-binary.outputs.path }}
 
   integration-windows-arm64:
-    name: Integration tests on windows-latest (arm64)
-    runs-on: windows-latest
+    name: Integration tests on windows-11-arm (arm64)
+    runs-on: windows-11-arm
     env:
       TYPR_IO_RUN_INTEGRATION_TESTS: "1"
       TYPR_IO_AUTO_CONFIRM: "1"
       TYPR_IO_INTERACTIVE: "1"
-      OS_NAME: windows-latest
+      OS_NAME: windows-11-arm
       ARCH: arm64
 
     steps:
