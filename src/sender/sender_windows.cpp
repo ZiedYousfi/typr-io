@@ -3,6 +3,7 @@
 #include <Windows.h>
 #include <chrono>
 #include <thread>
+#include <typr-io/log.hpp>
 #include <typr-io/sender.hpp>
 #include <unordered_map>
 
@@ -46,7 +47,11 @@ struct Sender::Impl {
   HKL layout{nullptr};
   std::unordered_map<Key, WORD> keyMap;
 
-  Impl() : layout(GetKeyboardLayout(0)) { initKeyMap(); }
+  Impl() : layout(GetKeyboardLayout(0)) {
+    initKeyMap();
+    TYPR_IO_LOG_INFO("Sender (Windows): Impl created; ready=%u",
+                     static_cast<unsigned>(ready));
+  }
 
   void initKeyMap() {
     // Try to discover printable mappings from the active keyboard layout.
@@ -181,6 +186,8 @@ struct Sender::Impl {
     setIfMissing(Key::Comma, VK_OEM_COMMA);
     setIfMissing(Key::Period, VK_OEM_PERIOD);
     setIfMissing(Key::Slash, VK_OEM_2);
+    TYPR_IO_LOG_DEBUG("Sender (Windows): initKeyMap populated %zu entries",
+                      keyMap.size());
   }
 
   WORD winVkFor(Key key) const {
@@ -190,8 +197,11 @@ struct Sender::Impl {
 
   bool sendKey(Key key, bool down) {
     WORD vk = winVkFor(key);
-    if (vk == 0)
+    if (vk == 0) {
+      TYPR_IO_LOG_DEBUG("Sender (Windows): no mapping for key=%s",
+                        keyToString(key).c_str());
       return false;
+    }
 
     INPUT input{};
     input.type = INPUT_KEYBOARD;
@@ -206,10 +216,21 @@ struct Sender::Impl {
       input.ki.dwFlags |= KEYEVENTF_KEYUP;
     }
 
-    return SendInput(1, &input, sizeof(INPUT)) > 0;
+    BOOL ok = SendInput(1, &input, sizeof(INPUT)) > 0;
+    if (!ok) {
+      TYPR_IO_LOG_ERROR("Sender (Windows): SendInput failed for vk=%u key=%s",
+                        static_cast<unsigned>(vk), keyToString(key).c_str());
+    } else {
+      TYPR_IO_LOG_DEBUG("Sender (Windows): sendKey vk=%u key=%s down=%u",
+                        static_cast<unsigned>(vk), keyToString(key).c_str(),
+                        static_cast<unsigned>(down));
+    }
+    return ok;
   }
 
   bool typeUnicode(const std::u32string &text) {
+    TYPR_IO_LOG_DEBUG("Sender::typeUnicode called with %zu codepoints",
+                      text.size());
     if (text.empty())
       return true;
 
@@ -258,14 +279,21 @@ struct Sender::Impl {
   }
 };
 
-TYPR_IO_API Sender::Sender() : m_impl(std::make_unique<Impl>()) {}
+TYPR_IO_API Sender::Sender() : m_impl(std::make_unique<Impl>()) {
+  TYPR_IO_LOG_INFO("Sender (Windows): constructed, ready=%u",
+                   static_cast<unsigned>(isReady()));
+}
 TYPR_IO_API Sender::~Sender() = default;
 TYPR_IO_API Sender::Sender(Sender &&) noexcept = default;
 TYPR_IO_API Sender &Sender::operator=(Sender &&) noexcept = default;
 
-TYPR_IO_API BackendType Sender::type() const { return BackendType::Windows; }
+TYPR_IO_API BackendType Sender::type() const {
+  TYPR_IO_LOG_DEBUG("Sender::type() -> Windows");
+  return BackendType::Windows;
+}
 
 TYPR_IO_API Capabilities Sender::capabilities() const {
+  TYPR_IO_LOG_DEBUG("Sender::capabilities (Windows) called");
   return {
       .canInjectKeys = m_impl->ready,
       .canInjectText = m_impl->ready,
@@ -282,6 +310,7 @@ TYPR_IO_API bool Sender::isReady() const { return m_impl->ready; }
 TYPR_IO_API bool Sender::requestPermissions() { return true; }
 
 TYPR_IO_API bool Sender::keyDown(Key key) {
+  TYPR_IO_LOG_DEBUG("Sender::keyDown %s", keyToString(key).c_str());
   // Update modifier state when a modifier key is pressed
   switch (key) {
   case Key::ShiftLeft:
@@ -307,6 +336,7 @@ TYPR_IO_API bool Sender::keyDown(Key key) {
 }
 
 TYPR_IO_API bool Sender::keyUp(Key key) {
+  TYPR_IO_LOG_DEBUG("Sender::keyUp %s", keyToString(key).c_str());
   bool result = m_impl->sendKey(key, false);
   // Update modifier state when a modifier key is released
   switch (key) {
@@ -341,6 +371,7 @@ TYPR_IO_API bool Sender::keyUp(Key key) {
 }
 
 TYPR_IO_API bool Sender::tap(Key key) {
+  TYPR_IO_LOG_DEBUG("Sender::tap %s", keyToString(key).c_str());
   if (!keyDown(key))
     return false;
   m_impl->delay();
@@ -401,6 +432,8 @@ TYPR_IO_API bool Sender::combo(Modifier mods, Key key) {
 }
 
 TYPR_IO_API bool Sender::typeText(const std::u32string &text) {
+  TYPR_IO_LOG_DEBUG("Sender::typeText (utf32) called with %zu codepoints",
+                    text.size());
   return m_impl->typeUnicode(text);
 }
 

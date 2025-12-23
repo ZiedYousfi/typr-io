@@ -12,6 +12,7 @@
 #include <iostream>
 #include <string>
 #include <thread>
+#include <typr-io/log.hpp>
 #include <typr-io/sender.hpp>
 
 using namespace typr::io;
@@ -20,6 +21,7 @@ using namespace std::chrono_literals;
 TEST_CASE("Sender Integration Suite", "[integration]") {
   Sender sender;
   auto caps = sender.capabilities();
+  TYPR_IO_LOG_INFO("Sender Integration Suite: starting integration tests");
 
   std::cout << "\n====================================================\n"
             << "CORE INTEGRATION TESTS\n"
@@ -35,11 +37,13 @@ TEST_CASE("Sender Integration Suite", "[integration]") {
 
   // --- SECTION 1: Layout & Mapping Consistency ---
   SECTION("Layout Mapping (Z/W & Numbers)") {
+    TYPR_IO_LOG_INFO("Integration test: Layout Mapping (Z/W & Numbers)");
     std::cout << "[RUNNING] Verifying character mapping (Z, W, 1)..."
               << std::endl;
 
     auto task = std::async(std::launch::async, [&sender]() {
       std::this_thread::sleep_for(500ms);
+      TYPR_IO_LOG_DEBUG("Integration test: sending taps Z W Num1 Enter");
       // Testing Z and W helps identify AZERTY vs QWERTY confusion.
       // Testing Num1 checks if we produce '1' or the shifted symbol.
       sender.tap(Key::Z);
@@ -52,6 +56,8 @@ TEST_CASE("Sender Integration Suite", "[integration]") {
     std::string received;
     std::getline(std::cin, received);
     task.get();
+    TYPR_IO_LOG_INFO("Integration test: received sequence: %s",
+                     received.c_str());
 
     std::transform(received.begin(), received.end(), received.begin(),
                    ::tolower);
@@ -65,11 +71,13 @@ TEST_CASE("Sender Integration Suite", "[integration]") {
 
   // --- SECTION 2: Modifiers (Shift) ---
   SECTION("Modifiers & Shift State") {
+    TYPR_IO_LOG_INFO("Integration test: Modifiers & Shift State");
     std::cout << "[RUNNING] Verifying Shift modifier (producing 'HELLO')..."
               << std::endl;
 
     auto task = std::async(std::launch::async, [&sender]() {
       std::this_thread::sleep_for(500ms);
+      TYPR_IO_LOG_DEBUG("Integration test: holding shift and sending HELLO");
 
       sender.holdModifier(Modifier::Shift);
       sender.tap(Key::H);
@@ -86,6 +94,7 @@ TEST_CASE("Sender Integration Suite", "[integration]") {
     std::string received;
     std::getline(std::cin, received);
     task.get();
+    TYPR_IO_LOG_INFO("Integration test: Received string: %s", received.c_str());
 
     INFO("Received string: " << received);
     CHECK(received.find("HELLO") != std::string::npos);
@@ -97,10 +106,12 @@ TEST_CASE("Sender Integration Suite", "[integration]") {
       SKIP("Key repeat not supported on this platform.");
     }
 
+    TYPR_IO_LOG_INFO("Integration test: Long Press & Repeat");
     std::cout << "[RUNNING] Testing key repeat (Holding 'X')..." << std::endl;
 
     auto task = std::async(std::launch::async, [&sender]() {
       std::this_thread::sleep_for(500ms);
+      TYPR_IO_LOG_DEBUG("Integration test: keyDown(Key::X)");
 
       sender.keyDown(Key::X);
       std::this_thread::sleep_for(1500ms); // Hold long enough for OS repeat
@@ -117,6 +128,7 @@ TEST_CASE("Sender Integration Suite", "[integration]") {
 
     size_t count = std::count(received.begin(), received.end(), 'x') +
                    std::count(received.begin(), received.end(), 'X');
+    TYPR_IO_LOG_INFO("Integration test: Repeat count=%zu", count);
 
     INFO("Repeat count: " << count);
     // Usually, 1.5s should produce at least 5-10 chars depending on OS

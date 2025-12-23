@@ -74,9 +74,14 @@ Top-level important paths (brief):
 
 ## Debugging & logging
 
-- Enable verbose backend logging with the environment variable:
-  - `TYPR_OSK_DEBUG_BACKEND=1`
-    This will print backend layout scanning decisions, injection strategy (physical key vs Unicode), and listener events.
+- Logging is enabled by default at the Debug level (most verbose) for the time being. Logged messages include an ISO-like timestamp, severity, file:line, thread id, and the formatted message.
+- Control runtime logging with the environment variable (preferred):
+  - `TYPR_IO_LOG_LEVEL=debug|info|warn|error`
+    Example: `TYPR_IO_LOG_LEVEL=info` limits output to Info and above.
+- Programmatic control: you can also change the log level at runtime from code by calling `typr::io::log::setLevel(typr::io::log::Level::Info)` (include `<typr-io/log.hpp>`).
+- Legacy: `TYPR_OSK_DEBUG_BACKEND=0|1` is still recognized historically, but `TYPR_IO_LOG_LEVEL` is the preferred mechanism. When `TYPR_IO_LOG_LEVEL` is not set logging defaults to Debug (enabled).
+- Quick debugging:
+  - To enable very verbose logs for local debugging: `TYPR_IO_LOG_LEVEL=debug`
 - Platform-specific tips:
   - macOS: check System Settings → Privacy & Security (Accessibility / Input Monitoring).
   - Linux: check permissions on `/dev/uinput`, `udevadm` output, and `dmesg` for uinput errors.

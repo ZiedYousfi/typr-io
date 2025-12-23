@@ -4,11 +4,13 @@
 
 #include <chrono>
 #include <cstring>
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <linux/uinput.h>
 #include <sys/ioctl.h>
 #include <thread>
+#include <typr-io/log.hpp>
 #include <unistd.h>
 #include <unordered_map>
 
@@ -29,8 +31,11 @@ struct Sender::Impl {
 
   Impl() {
     fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
-    if (fd < 0)
+    if (fd < 0) {
+      TYPR_IO_LOG_ERROR("Sender (uinput): failed to open /dev/uinput: %s",
+                        strerror(errno));
       return;
+    }
 
     // Enable key events
     ioctl(fd, UI_SET_EVBIT, EV_KEY);
@@ -59,12 +64,16 @@ struct Sender::Impl {
     // Initialize the per-instance key map (layout-aware logic can be added
     // later)
     initKeyMap();
+    TYPR_IO_LOG_INFO(
+        "Sender (uinput): device initialized fd=%d keymap_entries=%zu", fd,
+        keyMap.size());
   }
 
   ~Impl() {
     if (fd >= 0) {
       ioctl(fd, UI_DEV_DESTROY);
       close(fd);
+      TYPR_IO_LOG_INFO("Sender (uinput): device destroyed (fd=%d)", fd);
     }
   }
 
@@ -237,11 +246,18 @@ struct Sender::Impl {
         {Key::Period, KEY_DOT},
         {Key::Slash, KEY_SLASH},
     };
+    TYPR_IO_LOG_DEBUG("Sender (uinput): initKeyMap populated %zu entries",
+                      keyMap.size());
   }
 
   int linuxKeyCodeFor(Key key) const {
     auto it = keyMap.find(key);
-    return (it != keyMap.end()) ? it->second : -1;
+    if (it == keyMap.end()) {
+      TYPR_IO_LOG_DEBUG("Sender (uinput): no mapping for key=%s",
+                        keyToString(key).c_str());
+      return -1;
+    }
+    return it->second;
   }
 
   void emit(int type, int code, int val) {
@@ -249,21 +265,40 @@ struct Sender::Impl {
     ev.type = static_cast<unsigned short>(type);
     ev.code = static_cast<unsigned short>(code);
     ev.value = val;
-    write(fd, &ev, sizeof(ev));
+    ssize_t wrote = write(fd, &ev, sizeof(ev));
+    if (wrote < 0) {
+      TYPR_IO_LOG_ERROR(
+          "Sender (uinput): write failed (type=%d code=%d val=%d): %s", type,
+          code, val, strerror(errno));
+    } else {
+      TYPR_IO_LOG_DEBUG(
+          "Sender (uinput): emit type=%d code=%d val=%d wrote=%zd", type, code,
+          val, wrote);
+    }
   }
 
-  void sync() { emit(EV_SYN, SYN_REPORT, 0); }
+  void sync() {
+    emit(EV_SYN, SYN_REPORT, 0);
+    TYPR_IO_LOG_DEBUG("Sender (uinput): sync()");
+  }
 
   bool sendKey(Key key, bool down) {
-    if (fd < 0)
+    if (fd < 0) {
+      TYPR_IO_LOG_ERROR("Sender (uinput): device not ready (fd < 0)");
       return false;
+    }
 
     int code = linuxKeyCodeFor(key);
-    if (code < 0)
+    if (code < 0) {
+      TYPR_IO_LOG_DEBUG("Sender (uinput): sendKey - no code mapping for %s",
+                        keyToString(key).c_str());
       return false;
+    }
 
     emit(EV_KEY, code, down ? 1 : 0);
     sync();
+    TYPR_IO_LOG_DEBUG("Sender (uinput): sendKey %s code=%d %s",
+                      keyToString(key).c_str(), code, down ? "down" : "up");
     return true;
   }
 
@@ -274,14 +309,21 @@ struct Sender::Impl {
   }
 };
 
-Sender::Sender() : m_impl(std::make_unique<Impl>()) {}
+Sender::Sender() : m_impl(std::make_unique<Impl>()) {
+  TYPR_IO_LOG_INFO("Sender (uinput): constructed, ready=%u",
+                   static_cast<unsigned>(isReady()));
+}
 Sender::~Sender() = default;
 Sender::Sender(Sender &&) noexcept = default;
 Sender &Sender::operator=(Sender &&) noexcept = default;
 
-BackendType Sender::type() const { return BackendType::LinuxUInput; }
+BackendType Sender::type() const {
+  TYPR_IO_LOG_DEBUG("Sender::type() -> LinuxUInput");
+  return BackendType::LinuxUInput;
+}
 
 Capabilities Sender::capabilities() const {
+  TYPR_IO_LOG_DEBUG("Sender::capabilities() called");
   return {
       .canInjectKeys = (m_impl && m_impl->fd >= 0),
       .canInjectText = false, // uinput is physical keys only
@@ -293,9 +335,14 @@ Capabilities Sender::capabilities() const {
   };
 }
 
-bool Sender::isReady() const { return (m_impl && m_impl->fd >= 0); }
+bool Sender::isReady() const {
+  bool ready = (m_impl && m_impl->fd >= 0);
+  TYPR_IO_LOG_DEBUG("Sender::isReady() -> %u", static_cast<unsigned>(ready));
+  return ready;
+}
 
 bool Sender::requestPermissions() {
+  TYPR_IO_LOG_DEBUG("Sender::requestPermissions() called");
   // Can't request at runtime - needs /dev/uinput access (udev rules or root)
   return isReady();
 }
@@ -303,6 +350,7 @@ bool Sender::requestPermissions() {
 bool Sender::keyDown(Key key) {
   if (!m_impl)
     return false;
+  TYPR_IO_LOG_DEBUG("Sender::keyDown(%s)", keyToString(key).c_str());
 
   switch (key) {
   case Key::ShiftLeft:
@@ -324,12 +372,16 @@ bool Sender::keyDown(Key key) {
   default:
     break;
   }
-  return m_impl->sendKey(key, true);
+  bool ok = m_impl->sendKey(key, true);
+  TYPR_IO_LOG_DEBUG("Sender::keyDown(%s) result=%u", keyToString(key).c_str(),
+                    static_cast<unsigned>(ok));
+  return ok;
 }
 
 bool Sender::keyUp(Key key) {
   if (!m_impl)
     return false;
+  TYPR_IO_LOG_DEBUG("Sender::keyUp(%s)", keyToString(key).c_str());
 
   bool result = m_impl->sendKey(key, false);
   switch (key) {
@@ -360,21 +412,31 @@ bool Sender::keyUp(Key key) {
   default:
     break;
   }
+  TYPR_IO_LOG_DEBUG("Sender::keyUp(%s) result=%u", keyToString(key).c_str(),
+                    static_cast<unsigned>(result));
   return result;
 }
 
 bool Sender::tap(Key key) {
+  TYPR_IO_LOG_DEBUG("Sender::tap(%s)", keyToString(key).c_str());
   if (!keyDown(key))
     return false;
   m_impl->delay();
-  return keyUp(key);
+  bool ok = keyUp(key);
+  TYPR_IO_LOG_DEBUG("Sender::tap(%s) result=%u", keyToString(key).c_str(),
+                    static_cast<unsigned>(ok));
+  return ok;
 }
 
 Modifier Sender::activeModifiers() const {
-  return m_impl ? m_impl->currentMods : Modifier::None;
+  Modifier mods = m_impl ? m_impl->currentMods : Modifier::None;
+  TYPR_IO_LOG_DEBUG("Sender::activeModifiers() -> %u",
+                    static_cast<unsigned>(mods));
+  return mods;
 }
 
 bool Sender::holdModifier(Modifier mod) {
+  TYPR_IO_LOG_DEBUG("Sender::holdModifier(mod=%u)", static_cast<unsigned>(mod));
   bool ok = true;
   if (hasModifier(mod, Modifier::Shift))
     ok &= keyDown(Key::ShiftLeft);
@@ -384,10 +446,16 @@ bool Sender::holdModifier(Modifier mod) {
     ok &= keyDown(Key::AltLeft);
   if (hasModifier(mod, Modifier::Super))
     ok &= keyDown(Key::SuperLeft);
+  TYPR_IO_LOG_DEBUG(
+      "Sender::holdModifier result=%u currentMods=%u",
+      static_cast<unsigned>(ok),
+      static_cast<unsigned>(m_impl ? m_impl->currentMods : Modifier::None));
   return ok;
 }
 
 bool Sender::releaseModifier(Modifier mod) {
+  TYPR_IO_LOG_DEBUG("Sender::releaseModifier(mod=%u)",
+                    static_cast<unsigned>(mod));
   bool ok = true;
   if (hasModifier(mod, Modifier::Shift))
     ok &= keyUp(Key::ShiftLeft);
@@ -397,40 +465,63 @@ bool Sender::releaseModifier(Modifier mod) {
     ok &= keyUp(Key::AltLeft);
   if (hasModifier(mod, Modifier::Super))
     ok &= keyUp(Key::SuperLeft);
+  TYPR_IO_LOG_DEBUG(
+      "Sender::releaseModifier result=%u currentMods=%u",
+      static_cast<unsigned>(ok),
+      static_cast<unsigned>(m_impl ? m_impl->currentMods : Modifier::None));
   return ok;
 }
 
 bool Sender::releaseAllModifiers() {
-  return releaseModifier(Modifier::Shift | Modifier::Ctrl | Modifier::Alt |
-                         Modifier::Super);
+  TYPR_IO_LOG_DEBUG("Sender::releaseAllModifiers()");
+  bool ok = releaseModifier(Modifier::Shift | Modifier::Ctrl | Modifier::Alt |
+                            Modifier::Super);
+  TYPR_IO_LOG_DEBUG("Sender::releaseAllModifiers result=%u",
+                    static_cast<unsigned>(ok));
+  return ok;
 }
 
 bool Sender::combo(Modifier mods, Key key) {
+  TYPR_IO_LOG_DEBUG("Sender::combo(mods=%u key=%s)",
+                    static_cast<unsigned>(mods), keyToString(key).c_str());
   if (!holdModifier(mods))
     return false;
   m_impl->delay();
   bool ok = tap(key);
   m_impl->delay();
   releaseModifier(mods);
+  TYPR_IO_LOG_DEBUG("Sender::combo result=%u", static_cast<unsigned>(ok));
   return ok;
 }
 
 bool Sender::typeText(const std::u32string & /*text*/) {
+  TYPR_IO_LOG_INFO("Sender (uinput): typeText called but uinput cannot inject "
+                   "Unicode directly");
   // uinput cannot inject Unicode directly; converting to key events depends
   // on keyboard layout and is outside the scope of this backend.
   return false;
 }
 
-bool Sender::typeText(const std::string & /*utf8Text*/) { return false; }
+bool Sender::typeText(const std::string & /*utf8Text*/) {
+  TYPR_IO_LOG_INFO("Sender (uinput): typeText(utf8) called but not supported "
+                   "by uinput backend");
+  return false;
+}
 
-bool Sender::typeCharacter(char32_t /*codepoint*/) { return false; }
+bool Sender::typeCharacter(char32_t /*codepoint*/) {
+  TYPR_IO_LOG_INFO("Sender (uinput): typeCharacter called but not supported by "
+                   "uinput backend");
+  return false;
+}
 
 void Sender::flush() {
+  TYPR_IO_LOG_DEBUG("Sender::flush()");
   if (m_impl)
     m_impl->sync();
 }
 
 void Sender::setKeyDelay(uint32_t delayUs) {
+  TYPR_IO_LOG_DEBUG("Sender::setKeyDelay(%u)", delayUs);
   if (m_impl)
     m_impl->keyDelayUs = delayUs;
 }

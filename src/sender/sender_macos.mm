@@ -8,6 +8,7 @@
 #include <chrono>
 #include <thread>
 #include <unordered_map>
+#include <typr-io/log.hpp>
 
 namespace typr::io {
 
@@ -58,6 +59,9 @@ struct Sender::Impl {
       : eventSource(CGEventSourceCreate(kCGEventSourceStateHIDSystemState)),
         ready(AXIsProcessTrustedWithOptions(nullptr) != 0U) {
     initKeyMap();
+    TYPR_IO_LOG_INFO("Sender (macOS): Impl created; ready=%u", static_cast<unsigned>(ready));
+    TYPR_IO_LOG_DEBUG("Sender (macOS): eventSource=%p", eventSource);
+    TYPR_IO_LOG_DEBUG("Sender (macOS): keyMap initialized with %zu entries", keyMap.size());
   }
 
   ~Impl() {
@@ -254,18 +258,23 @@ struct Sender::Impl {
   [[nodiscard]] CGKeyCode macKeyCodeFor(Key key) const {
     auto keyMapIt = keyMap.find(key);
     static constexpr CGKeyCode kInvalidKeyCode = UINT16_MAX;
-    return (keyMapIt != keyMap.end()) ? keyMapIt->second : kInvalidKeyCode;
+    if (keyMapIt != keyMap.end())
+      return keyMapIt->second;
+    TYPR_IO_LOG_DEBUG("Sender (macOS): macKeyCodeFor(key=%s) -> invalid", keyToString(key).c_str());
+    return kInvalidKeyCode;
   }
 
   bool sendKey(Key key, bool down) const {
     CGKeyCode keyCode = macKeyCodeFor(key);
     static constexpr CGKeyCode kInvalidKeyCode = UINT16_MAX;
     if (keyCode == kInvalidKeyCode) {
+      TYPR_IO_LOG_DEBUG("Sender (macOS): sendKey - no mapping for key=%s", keyToString(key).c_str());
       return false;
     }
 
     CGEventRef event = CGEventCreateKeyboardEvent(eventSource, keyCode, down);
     if (event == nullptr) {
+      TYPR_IO_LOG_ERROR("Sender (macOS): CGEventCreateKeyboardEvent returned null for key=%s", keyToString(key).c_str());
       return false;
     }
 
@@ -273,10 +282,12 @@ struct Sender::Impl {
     CGEventSetFlags(event, modifierToFlags(currentMods));
     CGEventPost(kCGHIDEventTap, event);
     CFRelease(event);
+    TYPR_IO_LOG_DEBUG("Sender (macOS): sendKey key=%s keycode=%u down=%u", keyToString(key).c_str(), static_cast<unsigned>(keyCode), static_cast<unsigned>(down));
     return true;
   }
 
   [[nodiscard]] bool typeUnicode(const std::u32string &text) const {
+    TYPR_IO_LOG_DEBUG("Sender (macOS): typeUnicode called len=%zu", text.size());
     if (text.empty()) {
       return true;
     }
@@ -314,6 +325,7 @@ struct Sender::Impl {
         if (eventUp != nullptr) {
           CFRelease(eventUp);
         }
+        TYPR_IO_LOG_ERROR("Sender (macOS): typeUnicode failed to create CGEvents for chunk");
         return false;
       }
 
@@ -323,28 +335,37 @@ struct Sender::Impl {
 
       CGEventPost(kCGHIDEventTap, eventDown);
       CGEventPost(kCGHIDEventTap, eventUp);
+      TYPR_IO_LOG_DEBUG("Sender (macOS): posted unicode chunk length=%zu", chunkLength);
 
       CFRelease(eventDown);
       CFRelease(eventUp);
     }
+    TYPR_IO_LOG_DEBUG("Sender (macOS): typeUnicode completed");
     return true;
   }
 
   void delay() const {
     if (keyDelayUs > 0) {
+      TYPR_IO_LOG_DEBUG("Sender (macOS): delay %u us", keyDelayUs);
       std::this_thread::sleep_for(std::chrono::microseconds(keyDelayUs));
     }
   }
 };
 
-Sender::Sender() : m_impl(std::make_unique<Impl>()) {}
+Sender::Sender() : m_impl(std::make_unique<Impl>()) {
+  TYPR_IO_LOG_INFO("Sender (macOS): constructed, ready=%u", static_cast<unsigned>(isReady()));
+}
 Sender::~Sender() = default;
 Sender::Sender(Sender &&) noexcept = default;
 Sender &Sender::operator=(Sender &&) noexcept = default;
 
-BackendType Sender::type() const { return BackendType::MacOS; }
+BackendType Sender::type() const {
+  TYPR_IO_LOG_DEBUG("Sender::type() -> MacOS");
+  return BackendType::MacOS;
+}
 
 Capabilities Sender::capabilities() const {
+  TYPR_IO_LOG_DEBUG("Sender::capabilities() called (macOS)");
   return {
       .canInjectKeys = m_impl->ready,
       .canInjectText = m_impl->ready,
@@ -356,17 +377,24 @@ Capabilities Sender::capabilities() const {
   };
 }
 
-bool Sender::isReady() const { return m_impl->ready; }
+bool Sender::isReady() const {
+  bool r = m_impl ? m_impl->ready : false;
+  TYPR_IO_LOG_DEBUG("Sender::isReady() -> %u", static_cast<unsigned>(r));
+  return r;
+}
 
 bool Sender::requestPermissions() {
+  TYPR_IO_LOG_DEBUG("Sender::requestPermissions() called (macOS)");
   NSDictionary *opts =
       @{(__bridge NSString *)kAXTrustedCheckOptionPrompt : @YES};
   m_impl->ready =
       (AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts) != 0U);
+  TYPR_IO_LOG_INFO("Sender (macOS): requestPermissions result=%u", static_cast<unsigned>(m_impl->ready));
   return m_impl->ready;
 }
 
 bool Sender::keyDown(Key key) {
+  TYPR_IO_LOG_DEBUG("Sender::keyDown(%s)", keyToString(key).c_str());
   // Update modifier state if pressing a modifier
   switch (key) {
   case Key::ShiftLeft:
@@ -388,10 +416,13 @@ bool Sender::keyDown(Key key) {
   default:
     break;
   }
-  return m_impl->sendKey(key, true);
+  bool ok = m_impl->sendKey(key, true);
+  TYPR_IO_LOG_DEBUG("Sender::keyDown(%s) result=%u", keyToString(key).c_str(), static_cast<unsigned>(ok));
+  return ok;
 }
 
 bool Sender::keyUp(Key key) {
+  TYPR_IO_LOG_DEBUG("Sender::keyUp(%s)", keyToString(key).c_str());
   bool result = m_impl->sendKey(key, false);
   // Update modifier state if releasing a modifier
   switch (key) {
@@ -422,59 +453,66 @@ bool Sender::keyUp(Key key) {
   default:
     break;
   }
+  TYPR_IO_LOG_DEBUG("Sender::keyUp(%s) result=%u", keyToString(key).c_str(), static_cast<unsigned>(result));
   return result;
 }
 
 bool Sender::tap(Key key) {
+  TYPR_IO_LOG_DEBUG("Sender::tap(%s)", keyToString(key).c_str());
   if (!keyDown(key)) {
     return false;
   }
   m_impl->delay();
-  return keyUp(key);
+  bool ok = keyUp(key);
+  TYPR_IO_LOG_DEBUG("Sender::tap(%s) result=%u", keyToString(key).c_str(), static_cast<unsigned>(ok));
+  return ok;
 }
 
-Modifier Sender::activeModifiers() const { return m_impl->currentMods; }
+Modifier Sender::activeModifiers() const {
+  Modifier mods = m_impl->currentMods;
+  TYPR_IO_LOG_DEBUG("Sender::activeModifiers() -> %u", static_cast<unsigned>(mods));
+  return mods;
+}
 
 bool Sender::holdModifier(Modifier mod) {
+  TYPR_IO_LOG_DEBUG("Sender::holdModifier(mod=%u)", static_cast<unsigned>(mod));
   bool allModifiersPressed = true;
-  if (hasModifier(mod, Modifier::Shift)) {
+  if (hasModifier(mod, Modifier::Shift))
     allModifiersPressed &= keyDown(Key::ShiftLeft);
-  }
-  if (hasModifier(mod, Modifier::Ctrl)) {
+  if (hasModifier(mod, Modifier::Ctrl))
     allModifiersPressed &= keyDown(Key::CtrlLeft);
-  }
-  if (hasModifier(mod, Modifier::Alt)) {
+  if (hasModifier(mod, Modifier::Alt))
     allModifiersPressed &= keyDown(Key::AltLeft);
-  }
-  if (hasModifier(mod, Modifier::Super)) {
+  if (hasModifier(mod, Modifier::Super))
     allModifiersPressed &= keyDown(Key::SuperLeft);
-  }
+  TYPR_IO_LOG_DEBUG("Sender::holdModifier result=%u currentMods=%u", static_cast<unsigned>(allModifiersPressed), static_cast<unsigned>(m_impl ? m_impl->currentMods : Modifier::None));
   return allModifiersPressed;
 }
 
 bool Sender::releaseModifier(Modifier mod) {
+  TYPR_IO_LOG_DEBUG("Sender::releaseModifier(mod=%u)", static_cast<unsigned>(mod));
   bool allModifiersReleased = true;
-  if (hasModifier(mod, Modifier::Shift)) {
+  if (hasModifier(mod, Modifier::Shift))
     allModifiersReleased &= keyUp(Key::ShiftLeft);
-  }
-  if (hasModifier(mod, Modifier::Ctrl)) {
+  if (hasModifier(mod, Modifier::Ctrl))
     allModifiersReleased &= keyUp(Key::CtrlLeft);
-  }
-  if (hasModifier(mod, Modifier::Alt)) {
+  if (hasModifier(mod, Modifier::Alt))
     allModifiersReleased &= keyUp(Key::AltLeft);
-  }
-  if (hasModifier(mod, Modifier::Super)) {
+  if (hasModifier(mod, Modifier::Super))
     allModifiersReleased &= keyUp(Key::SuperLeft);
-  }
+  TYPR_IO_LOG_DEBUG("Sender::releaseModifier result=%u currentMods=%u", static_cast<unsigned>(allModifiersReleased), static_cast<unsigned>(m_impl ? m_impl->currentMods : Modifier::None));
   return allModifiersReleased;
 }
 
 bool Sender::releaseAllModifiers() {
-  return releaseModifier(Modifier::Shift | Modifier::Ctrl | Modifier::Alt |
-                         Modifier::Super);
+  TYPR_IO_LOG_DEBUG("Sender::releaseAllModifiers()");
+  bool ok = releaseModifier(Modifier::Shift | Modifier::Ctrl | Modifier::Alt | Modifier::Super);
+  TYPR_IO_LOG_DEBUG("Sender::releaseAllModifiers result=%u", static_cast<unsigned>(ok));
+  return ok;
 }
 
 bool Sender::combo(Modifier mods, Key key) {
+  TYPR_IO_LOG_DEBUG("Sender::combo(mods=%u key=%s)", static_cast<unsigned>(mods), keyToString(key).c_str());
   if (!holdModifier(mods)) {
     return false;
   }
@@ -482,14 +520,17 @@ bool Sender::combo(Modifier mods, Key key) {
   bool tapResult = tap(key);
   m_impl->delay();
   releaseModifier(mods);
+  TYPR_IO_LOG_DEBUG("Sender::combo result=%u", static_cast<unsigned>(tapResult));
   return tapResult;
 }
 
 bool Sender::typeText(const std::u32string &text) {
+  TYPR_IO_LOG_DEBUG("Sender::typeText (utf32) called with %zu codepoints", text.size());
   return m_impl->typeUnicode(text);
 }
 
 bool Sender::typeText(const std::string &utf8Text) {
+  TYPR_IO_LOG_DEBUG("Sender::typeText (utf8) called len=%zu", utf8Text.size());
   std::u32string utf32;
   size_t utf8Index = 0;
   static constexpr unsigned char kUtf8Mask6 = 0x3F;
@@ -514,8 +555,7 @@ bool Sender::typeText(const std::string &utf8Text) {
     } else if ((utf8Char & kUtf8Mask9) == kUtf8Mask8) {
       decodedCodepoint = (utf8Char & kUtf8Mask5) << kUtf8Shift6;
       if (utf8Index + 1 < utf8Text.size()) {
-        decodedCodepoint |=
-            (static_cast<unsigned char>(utf8Text[utf8Index + 1]) & kUtf8Mask6);
+        decodedCodepoint |= (utf8Text[utf8Index + 1] & 0x3F);
       }
       utf8Index += 2;
     } else if ((utf8Char & kUtf8Mask10) == kUtf8Mask9) {
@@ -557,14 +597,17 @@ bool Sender::typeText(const std::string &utf8Text) {
 }
 
 bool Sender::typeCharacter(char32_t codepoint) {
+  TYPR_IO_LOG_DEBUG("Sender::typeCharacter(codepoint=%u)", static_cast<unsigned>(codepoint));
   return typeText(std::u32string(1, codepoint));
 }
 
 void Sender::flush() {
+  TYPR_IO_LOG_DEBUG("Sender::flush()");
   // CGEventPost is synchronous
 }
 
 void Sender::setKeyDelay(uint32_t delayUs) {
+  TYPR_IO_LOG_DEBUG("Sender::setKeyDelay(%u)", delayUs);
   m_impl->keyDelayUs = delayUs;
 }
 

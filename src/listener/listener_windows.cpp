@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <mutex>
 #include <thread>
+#include <typr-io/log.hpp>
 #include <unordered_map>
 #include <vector>
 
@@ -64,19 +65,7 @@ bool isExtendedKeyForVK(WORD vk) {
 // Debugging helper for OutputListener. Controlled by env var
 // TYPR_OSK_DEBUG_BACKEND (set to '0' to disable). Defaults to enabled for
 // testing as requested.
-static bool output_debug_enabled() {
-  static int d = -1;
-  if (d != -1)
-    return d != 0;
-  const char *env = getenv("TYPR_OSK_DEBUG_BACKEND");
-  if (!env) {
-    // Default to enabled for the time being while testing
-    d = 1;
-  } else {
-    d = (env[0] != '0');
-  }
-  return d != 0;
-}
+static bool output_debug_enabled() { return ::typr::io::log::debugEnabled(); }
 
 } // namespace
 
@@ -96,6 +85,7 @@ struct Listener::Impl {
     running.store(true);
     // Mark not-ready until the hook is actually installed.
     ready.store(false);
+    TYPR_IO_LOG_INFO("Listener (Windows): start requested");
     worker = std::thread(&Impl::threadMain, this);
 
     // Wait briefly for the hook to be installed (or to fail). This allows
@@ -107,12 +97,16 @@ struct Listener::Impl {
         return true;
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
-    return ready.load();
+    bool ok = ready.load();
+    TYPR_IO_LOG_DEBUG("Listener (Windows): start result=%u",
+                      static_cast<unsigned>(ok));
+    return ok;
   }
 
   void stop() {
     if (!running.load())
       return;
+    TYPR_IO_LOG_INFO("Listener (Windows): stop requested");
     running.store(false);
 
     // Wake the thread by posting WM_QUIT
@@ -123,6 +117,7 @@ struct Listener::Impl {
 
     if (worker.joinable())
       worker.join();
+    TYPR_IO_LOG_INFO("Listener (Windows): stopped");
   }
 
   bool isRunning() const { return running.load(); }
@@ -359,17 +354,11 @@ private:
     Modifier mods = deriveModifiers();
     invokeCallback(codepoint, mappedKey, mods, pressed);
 
-    // Debug logging (enabled by default for testing; disable by setting
-    // TYPR_OSK_DEBUG_BACKEND=0 in the environment)
-    if (output_debug_enabled()) {
-      std::string keyName = keyToString(mappedKey);
-      fprintf(stderr,
-              "[typr-backend] Listener (Windows) %s: vk=%u key=%s cp=%u "
-              "mods=%u\n",
-              pressed ? "press" : "release", static_cast<unsigned>(vk),
-              keyName.c_str(), static_cast<unsigned>(codepoint),
-              static_cast<unsigned>(mods));
-    }
+    std::string keyName = keyToString(mappedKey);
+    TYPR_IO_LOG_DEBUG("Listener (Windows) %s: vk=%u key=%s cp=%u mods=%u",
+                      pressed ? "press" : "release", static_cast<unsigned>(vk),
+                      keyName.c_str(), static_cast<unsigned>(codepoint),
+                      static_cast<unsigned>(mods));
   }
 
   // Determine modifiers using GetKeyState
@@ -415,19 +404,13 @@ private:
       threadId.store(0);
       running.store(false);
       ready.store(false);
-      if (output_debug_enabled()) {
-        fprintf(stderr, "[typr-backend] Listener (Windows): "
-                        "SetWindowsHookEx failed\n");
-      }
+      TYPR_IO_LOG_ERROR("Listener (Windows): SetWindowsHookEx failed");
       return;
     }
 
     // Hook installed successfully
     ready.store(true);
-    if (output_debug_enabled()) {
-      fprintf(stderr, "[typr-backend] Listener (Windows): low-level "
-                      "keyboard hook installed\n");
-    }
+    TYPR_IO_LOG_INFO("Listener (Windows): low-level keyboard hook installed");
 
     // Standard message loop (blocks on GetMessage; WM_QUIT ends it).
     MSG msg;
@@ -456,15 +439,18 @@ TYPR_IO_API Listener::Listener(Listener &&) noexcept = default;
 TYPR_IO_API Listener &Listener::operator=(Listener &&) noexcept = default;
 
 TYPR_IO_API bool Listener::start(Callback cb) {
+  TYPR_IO_LOG_DEBUG("Listener::start() called (Windows)");
   return m_impl ? m_impl->start(std::move(cb)) : false;
 }
 
 TYPR_IO_API void Listener::stop() {
+  TYPR_IO_LOG_DEBUG("Listener::stop() called (Windows)");
   if (m_impl)
     m_impl->stop();
 }
 
 TYPR_IO_API bool Listener::isListening() const {
+  TYPR_IO_LOG_DEBUG("Listener::isListening() called (Windows)");
   return m_impl ? m_impl->isRunning() : false;
 }
 

@@ -71,9 +71,12 @@ If a desired capability is not available on the target platform, use `capabiliti
 
 ## Debugging & troubleshooting
 
-- Enable verbose backend debug logging by setting the environment variable:
-  - `TYPR_OSK_DEBUG_BACKEND=1`
-    This will print backend decisions (whether a physical key or a Unicode injection was used), layout scanning details, and listener events.
+- Logging is enabled by default at the Debug level (most verbose). Logs are printed to stderr and include an ISO-like timestamp, severity, file:line, thread id, and the formatted message.
+- To control runtime verbosity, use the environment variable:
+  - `TYPR_IO_LOG_LEVEL=debug|info|warn|error`
+    Example: `TYPR_IO_LOG_LEVEL=info` limits output to Info and above.
+- Legacy compatibility: if `TYPR_IO_LOG_LEVEL` is not set, the legacy `TYPR_OSK_DEBUG_BACKEND` env var is still recognized (non-zero enables debug logging, `0` disables). Prefer `TYPR_IO_LOG_LEVEL` for explicit control.
+- You can also change the log level programmatically from code by calling `typr::io::log::setLevel(typr::io::log::Level::Info)` (include `<typr-io/log.hpp>`).
 - For macOS permission issues, check System Settings → Privacy & Security → Accessibility / Input Monitoring and confirm your app has been granted access.
 - For uinput permission problems on Linux, ensure your udev rule is installed and the running user is in the correct group, then re-login or reload udev rules.
 

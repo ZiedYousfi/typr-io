@@ -5,6 +5,7 @@
 #import <Foundation/Foundation.h>
 #include <ApplicationServices/ApplicationServices.h>
 #include <Carbon/Carbon.h>
+#include <typr-io/log.hpp>
 #include <cstdio>
 #include <cstdlib>
 #include <chrono>
@@ -40,17 +41,7 @@ Modifier flagsToModifier(CGEventFlags flags) {
 }
 
 static bool output_debug_enabled() {
-  static int d = -1;
-  if (d != -1)
-    return d != 0;
-  const char *env = getenv("TYPR_OSK_DEBUG_BACKEND");
-  if (!env) {
-    // Default to enabled for the time being while testing
-    d = 1;
-  } else {
-    d = (env[0] != '0');
-  }
-  return d != 0;
+  return ::typr::io::log::debugEnabled();
 }
 
 } // namespace
@@ -68,6 +59,7 @@ struct Listener::Impl {
     std::lock_guard<std::mutex> lk(cbMutex);
     if (running.load())
       return false;
+    TYPR_IO_LOG_INFO("Listener (macOS): start requested");
     callback = std::move(cb);
     running.store(true);
     ready.store(false);
@@ -81,12 +73,15 @@ struct Listener::Impl {
         return true;
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
-    return ready.load();
+    bool ok = ready.load();
+    TYPR_IO_LOG_DEBUG("Listener (macOS): start result=%u", static_cast<unsigned>(ok));
+    return ok;
   }
 
   void stop() {
     if (!running.load())
       return;
+    TYPR_IO_LOG_INFO("Listener (macOS): stop requested");
     running.store(false);
 
     // Stop the CFRunLoop (may be called from another thread)
@@ -112,6 +107,7 @@ struct Listener::Impl {
       std::lock_guard<std::mutex> lk(cbMutex);
       callback = nullptr;
     }
+    TYPR_IO_LOG_INFO("Listener (macOS): stopped");
   }
 
   bool isRunning() const { return running.load(); }
@@ -127,14 +123,12 @@ private:
     eventTap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap, kCGEventTapOptionListenOnly, mask,
                                 &Impl::eventTapCallback, this);
     if (eventTap == nullptr) {
-    // Failed to create event tap -> nothing we can do here
-    running.store(false);
-    ready.store(false);
-    if (output_debug_enabled()) {
-      fprintf(stderr, "[typr-backend] Listener (macOS): failed to create CGEventTap. Input Monitoring permission may be missing.\n");
+      // Failed to create event tap -> nothing we can do here
+      running.store(false);
+      ready.store(false);
+      TYPR_IO_LOG_ERROR("Listener (macOS): failed to create CGEventTap. Input Monitoring permission may be missing.");
+      return;
     }
-    return;
-  }
 
     // Create a runloop source and add it to the current run loop
     runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0);
@@ -144,9 +138,7 @@ private:
 
     // Signal successful initialization and optionally log
     ready.store(true);
-    if (output_debug_enabled()) {
-      fprintf(stderr, "[typr-backend] Listener (macOS): event tap created and enabled\n");
-    }
+    TYPR_IO_LOG_INFO("Listener (macOS): event tap created and enabled");
 
     // Store the run loop so `stop` can stop it from another thread
     runLoop = CFRunLoopGetCurrent();
@@ -231,12 +223,13 @@ private:
       cbCopy(static_cast<char32_t>(codepoint), mapped, mods, pressed);
     }
 
-    if (output_debug_enabled()) {
+    {
       std::string kname = "Unknown";
       auto kIt = self->cgKeyToKey.find(keyCode);
       if (kIt != self->cgKeyToKey.end()) kname = keyToString(kIt->second);
-      fprintf(stderr, "[typr-backend] Listener (macOS) %s: keycode=%u key=%s cp=%u mods=%u\n",
-              pressed ? "press" : "release", (unsigned)keyCode, kname.c_str(), (unsigned)codepoint, (unsigned)mods);
+      TYPR_IO_LOG_DEBUG("Listener (macOS) %s: keycode=%u key=%s cp=%u mods=%u",
+                       pressed ? "press" : "release", (unsigned)keyCode, kname.c_str(),
+                       (unsigned)codepoint, (unsigned)mods);
     }
 
     // Let the event pass through unchanged
@@ -251,6 +244,7 @@ private:
     TISInputSourceRef currentKeyboard = TISCopyCurrentKeyboardInputSource();
     if (currentKeyboard == nullptr) {
       // Fall back to using constants only
+      TYPR_IO_LOG_WARN("Listener (macOS): TISCopyCurrentKeyboardInputSource failed, using fallbacks");
       fillFallbacks();
       return;
     }
@@ -259,6 +253,7 @@ private:
         currentKeyboard, kTISPropertyUnicodeKeyLayoutData));
     if (layoutData == nullptr) {
       CFRelease(currentKeyboard);
+      TYPR_IO_LOG_WARN("Listener (macOS): keyboard layout data not available, using fallbacks");
       fillFallbacks();
       return;
     }

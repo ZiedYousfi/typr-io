@@ -17,22 +17,13 @@
 #include <unordered_map>
 #include <vector>
 
+// Logging
+#include <typr-io/log.hpp>
+
 namespace typr::io {
 
 namespace {
-static bool output_debug_enabled() {
-  static int d = -1;
-  if (d != -1)
-    return d != 0;
-  const char *env = getenv("TYPR_OSK_DEBUG_BACKEND");
-  if (!env) {
-    // Default to enabled for the time being while testing
-    d = 1;
-  } else {
-    d = (env[0] != '0');
-  }
-  return d != 0;
-}
+static bool output_debug_enabled() { return ::typr::io::log::debugEnabled(); }
 } // namespace
 
 /**
@@ -59,6 +50,7 @@ struct Listener::Impl {
       return false;
     callback = std::move(cb);
     running.store(true);
+    TYPR_IO_LOG_INFO("Listener (X11): start requested");
     ready.store(false);
     worker = std::thread(&Impl::threadMain, this);
 
@@ -70,12 +62,16 @@ struct Listener::Impl {
         return true;
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
-    return ready.load();
+    bool ok = ready.load();
+    TYPR_IO_LOG_DEBUG("Listener (X11): start result=%u",
+                      static_cast<unsigned>(ok));
+    return ok;
   }
 
   void stop() {
     if (!running.load())
       return;
+    TYPR_IO_LOG_INFO("Listener (X11): stop requested");
     running.store(false);
     if (worker.joinable())
       worker.join();
@@ -94,6 +90,7 @@ struct Listener::Impl {
       callback = nullptr;
     }
     keyCodeToKey.clear();
+    TYPR_IO_LOG_INFO("Listener (X11): stopped");
   }
 
   bool isRunning() const { return running.load(); }
@@ -105,10 +102,7 @@ private:
     if (!dpy) {
       running.store(false);
       ready.store(false);
-      if (output_debug_enabled()) {
-        fprintf(stderr,
-                "[typr-backend] Listener (X11): XOpenDisplay() failed\n");
-      }
+      TYPR_IO_LOG_ERROR("Listener (X11): XOpenDisplay() failed");
       return;
     }
 
@@ -121,10 +115,7 @@ private:
       dpy = nullptr;
       running.store(false);
       ready.store(false);
-      if (output_debug_enabled()) {
-        fprintf(stderr, "[typr-backend] Listener (X11): XInput extension "
-                        "not available\n");
-      }
+      TYPR_IO_LOG_ERROR("Listener (X11): XInput extension not available");
       return;
     }
 
@@ -136,10 +127,8 @@ private:
       dpy = nullptr;
       running.store(false);
       ready.store(false);
-      if (output_debug_enabled()) {
-        fprintf(stderr, "[typr-backend] Listener (X11): XI2 not "
-                        "available (XIQueryVersion failed)\n");
-      }
+      TYPR_IO_LOG_ERROR(
+          "Listener (X11): XI2 not available (XIQueryVersion failed)");
       return;
     }
 
@@ -163,10 +152,7 @@ private:
 
     // Event selection succeeded; mark as ready and optionally log
     ready.store(true);
-    if (output_debug_enabled()) {
-      fprintf(stderr, "[typr-backend] Listener (X11): registered for "
-                      "XI_RawKey events\n");
-    }
+    TYPR_IO_LOG_INFO("Listener (X11): registered for XI_RawKey events");
 
     // Polling event loop (keeps it simple and avoid blocking shutdown issues)
     while (running.load()) {
@@ -296,16 +282,14 @@ private:
       cbCopy(codepoint, mappedKey, mods, pressed);
     }
 
-    // Debug logging (enabled by default for testing; disable with
-    // TYPR_OSK_DEBUG_BACKEND=0)
-    if (output_debug_enabled()) {
+    // Debug logging (will be emitted if debug level is enabled)
+    {
       std::string keyName = keyToString(mappedKey);
-      fprintf(stderr,
-              "[typr-backend] Listener (X11) %s: keycode=%d key=%s "
-              "keysym=%lu cp=%u mods=%u\n",
-              pressed ? "press" : "release", keycode, keyName.c_str(),
-              static_cast<unsigned long>(ks), static_cast<unsigned>(codepoint),
-              static_cast<unsigned>(mods));
+      TYPR_IO_LOG_DEBUG(
+          "Listener (X11) %s: keycode=%d key=%s keysym=%lu cp=%u mods=%u",
+          pressed ? "press" : "release", keycode, keyName.c_str(),
+          static_cast<unsigned long>(ks), static_cast<unsigned>(codepoint),
+          static_cast<unsigned>(mods));
     }
   }
 
@@ -365,6 +349,8 @@ private:
     addFallback(Key::Grave, XK_grave);
     addFallback(Key::LeftBracket, XK_bracketleft);
     addFallback(Key::RightBracket, XK_bracketright);
+    TYPR_IO_LOG_DEBUG("Listener (X11): initialized key map with %zu entries",
+                      keyCodeToKey.size());
   }
 
   // Populate keyCodeToKey by iterating display keycodes and mapping via keysym
@@ -453,15 +439,18 @@ Listener::Listener(Listener &&) noexcept = default;
 Listener &Listener::operator=(Listener &&) noexcept = default;
 
 bool Listener::start(Callback cb) {
+  TYPR_IO_LOG_DEBUG("Listener::start() called (X11)");
   return m_impl ? m_impl->start(std::move(cb)) : false;
 }
 
 void Listener::stop() {
+  TYPR_IO_LOG_DEBUG("Listener::stop() called (X11)");
   if (m_impl)
     m_impl->stop();
 }
 
 bool Listener::isListening() const {
+  TYPR_IO_LOG_DEBUG("Listener::isListening() called (X11)");
   return m_impl ? m_impl->isRunning() : false;
 }
 

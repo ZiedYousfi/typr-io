@@ -1,4 +1,5 @@
 #include <typr-io/core.hpp>
+#include <typr-io/log.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -183,6 +184,8 @@ TYPR_IO_API Key stringToKey(const std::string &input) {
       // Seed canonical mapping (lowercased)
       rev.emplace(toLower(pair.second), pair.first);
     }
+    TYPR_IO_LOG_DEBUG("Seeding reverse map with %zu canonical entries",
+                      keyStringPairs().size());
 
     // Helpful aliases / synonyms
     rev.emplace("esc", Key::Escape);
@@ -243,6 +246,7 @@ TYPR_IO_API Key stringToKey(const std::string &input) {
   if (it != rev.end()) {
     return it->second;
   }
+  TYPR_IO_LOG_DEBUG("stringToKey: unknown input='%s'", input.c_str());
   return Key::Unknown;
 }
 

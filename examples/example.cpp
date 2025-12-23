@@ -19,6 +19,7 @@
 #include <thread>
 
 #include <typr-io/listener.hpp>
+#include <typr-io/log.hpp>
 #include <typr-io/sender.hpp>
 
 int main(int argc, char **argv) {
@@ -26,8 +27,13 @@ int main(int argc, char **argv) {
 
   typr::io::Sender sender;
   auto caps = sender.capabilities();
+  TYPR_IO_LOG_INFO(
+      "example: sender constructed; type=%d canInjectKeys=%d canInjectText=%d",
+      static_cast<int>(sender.type()), static_cast<int>(caps.canInjectKeys),
+      static_cast<int>(caps.canInjectText));
 
   std::cout << "typr-io example\n";
+  TYPR_IO_LOG_INFO("example: startup argc=%d", argc);
   std::cout << "  sender type (raw): " << static_cast<int>(sender.type())
             << "\n";
   std::cout << "  capabilities:\n";
@@ -63,12 +69,15 @@ int main(int argc, char **argv) {
         return 1;
       }
       std::string text = argv[++i];
+      TYPR_IO_LOG_INFO("example: attempting to type: \"%s\"", text.c_str());
       if (!caps.canInjectText) {
         std::cerr << "Backend cannot inject arbitrary text on this "
                      "platform/back-end\n";
       } else {
         std::cout << "Attempting to type: \"" << text << "\"\n";
         bool ok = sender.typeText(text);
+        TYPR_IO_LOG_INFO("example: typeText result=%u",
+                         static_cast<unsigned>(ok));
         std::cout << (ok ? "-> Success\n" : "-> Failed\n");
       }
 
@@ -88,7 +97,10 @@ int main(int argc, char **argv) {
         continue;
       }
       std::cout << "Tapping key: " << typr::io::keyToString(k) << "\n";
+      TYPR_IO_LOG_INFO("example: tapping key=%s (%s)", keyName.c_str(),
+                       typr::io::keyToString(k).c_str());
       bool ok = sender.tap(k);
+      TYPR_IO_LOG_INFO("example: tap result=%u", static_cast<unsigned>(ok));
       std::cout << (ok ? "-> Success\n" : "-> Failed\n");
 
     } else if (arg == "--listen") {
@@ -97,6 +109,7 @@ int main(int argc, char **argv) {
         return 1;
       }
       int seconds = std::stoi(argv[++i]);
+      TYPR_IO_LOG_INFO("example: starting listener for %d seconds", seconds);
       typr::io::Listener listener;
       bool started = listener.start([](char32_t codepoint, typr::io::Key key,
                                        typr::io::Modifier mods, bool pressed) {
@@ -105,14 +118,22 @@ int main(int argc, char **argv) {
                   << " CP=" << static_cast<unsigned>(codepoint) << " Mods=0x"
                   << std::hex << static_cast<int>(static_cast<uint8_t>(mods))
                   << std::dec << "\n";
+        TYPR_IO_LOG_DEBUG("example: listener %s key=%s cp=%u mods=0x%02x",
+                          pressed ? "press" : "release",
+                          typr::io::keyToString(key).c_str(),
+                          static_cast<unsigned>(codepoint),
+                          static_cast<int>(static_cast<uint8_t>(mods)));
       });
       if (!started) {
+        TYPR_IO_LOG_ERROR("example: listener failed to start");
         std::cerr
             << "Listener failed to start (permissions / platform support?)\n";
       } else {
+        TYPR_IO_LOG_INFO("example: listener started");
         std::cout << "Listening for " << seconds << " seconds...\n";
         std::this_thread::sleep_for(std::chrono::seconds(seconds));
         listener.stop();
+        TYPR_IO_LOG_INFO("example: listener stopped");
         std::cout << "Stopped listening\n";
       }
 
