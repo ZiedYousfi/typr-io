@@ -23,10 +23,14 @@
 #include <typr-io/sender.hpp>
 
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
+#include <string>
 #include <thread>
+#include <vector>
 
 using namespace std::chrono_literals;
 using namespace typr::io;
