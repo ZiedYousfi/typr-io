@@ -75,7 +75,19 @@ jobs:
 
       - name: Clean stale build directory (Windows)
         if: runner.os == 'Windows'
-        run: powershell -Command "Remove-Item -Path build -Recurse -Force -ErrorAction SilentlyContinue"
+        shell: pwsh
+        run: |
+          $path = 'build'
+          if (Test-Path -LiteralPath $path) {
+            try {
+              Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop -Verbose
+            } catch {
+              Write-Host "Warning: failed to remove '$path': $($_.Exception.Message)"
+              # Intentionally don't rethrow so the workflow step succeeds even if removal fails
+            }
+          } else {
+            Write-Host "No build directory to remove"
+          }
 
       - name: Configure (CMake, Linux/macOS)
         if: runner.os != 'Windows'
