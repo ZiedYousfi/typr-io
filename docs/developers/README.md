@@ -114,6 +114,19 @@ Listener vs Sender considerations
 ## Testing & CI
 
 - `make test` runs the repository's smoke tests (currently exercises the test consumer / example).
+- Integration tests are separated from the lightweight unit tests because they exercise OS integration and may be interactive, require permissions/GUI, or take longer to run.
+- To build and run integration tests locally:
+  - Enable integration tests at configure time:
+    - `cmake -S . -B build -DTYPR_IO_BUILD_TESTS=ON -DTYPR_IO_BUILD_INTEGRATION_TESTS=ON -DCMAKE_BUILD_TYPE=Debug`
+    - `cmake --build build --parallel`
+  - Run the integration test binary directly:
+    - `./build/tests/typr-io-integration-tests`
+  - Or run via CTest:
+    - `ctest --test-dir build -R typr-io-integration-tests -C Debug --output-on-failure`
+  - Useful environment variables (may be respected by integration tests or local helpers):
+    - `TYPR_IO_RUN_INTEGRATION_TESTS=1` : historically used to gate integration tests.
+    - `TYPR_IO_AUTO_CONFIRM=1` : auto-confirm interactive prompts for non-interactive runs (CI).
+    - `TYPR_IO_INTERACTIVE=1` : enable interactive prompts when running locally.
 - Keep tests platform-neutral where possible. For platform-specific behavior, provide small example-based tests and mark them so CI or maintainers can choose when to execute them.
 - When adding critical behavior, add a test (or smoke example) that reproduces the issue so regressions are less likely.
 

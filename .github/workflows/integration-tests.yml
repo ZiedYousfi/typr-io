@@ -1,16 +1,24 @@
 name: Integration tests (manual)
 
-# Manual workflow to run the integration tests. Integration tests are gated
-# behind environment variables in the test code:
+# Manual workflow to run the integration tests. Integration tests are built
+# and executed from a dedicated test executable (`typr-io-integration-tests`)
+# and are no longer bundled into the lightweight unit test binary. The
+# integration executable is produced when CMake is configured with:
 #
-# - TYPR_IO_RUN_INTEGRATION_TESTS=1  : enables integration tests
+#   -DTYPR_IO_BUILD_TESTS=ON -DTYPR_IO_BUILD_INTEGRATION_TESTS=ON
+#
+# Integration tests are often interactive and may require GUI/device
+# permissions. The workflow exposes a few environment variables useful for
+# CI or local runs:
+#
+# - TYPR_IO_RUN_INTEGRATION_TESTS=1  : historically used to enable integration tests
 # - TYPR_IO_AUTO_CONFIRM=1           : auto-confirm prompts (non-interactive)
 # - TYPR_IO_INTERACTIVE=(true|yes|1) : enable interactive prompts
 #
-# By default this workflow sets TYPR_IO_RUN_INTEGRATION_TESTS=1 and
-# TYPR_IO_AUTO_CONFIRM=1 so integration tests can run in a non-interactive
-# CI-friendly way. If you want interactive behavior, trigger the workflow
-# manually and set the `interactive` input to `true`.
+# By default this workflow sets `TYPR_IO_RUN_INTEGRATION_TESTS=1` and
+# `TYPR_IO_AUTO_CONFIRM=1` so tests can run non-interactively in CI. To run
+# interactively, trigger the workflow manually and set the `interactive`
+# input to `true`.
 on:
   workflow_dispatch:
     inputs:
@@ -91,11 +99,11 @@ jobs:
 
       - name: Configure (CMake, Linux/macOS)
         if: runner.os != 'Windows'
-        run: cmake -S . -B build -DTYPR_IO_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -DTYPR_IO_BUILD_TESTS=ON -DTYPR_IO_BUILD_INTEGRATION_TESTS=ON -DCMAKE_BUILD_TYPE=Release
 
       - name: Configure (CMake, Windows)
         if: runner.os == 'Windows'
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DTYPR_IO_BUILD_TESTS=ON
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DTYPR_IO_BUILD_TESTS=ON -DTYPR_IO_BUILD_INTEGRATION_TESTS=ON
 
       - name: Build (CMake)
         run: cmake --build build --config Release --parallel
@@ -108,8 +116,8 @@ jobs:
           DISPLAY: ${{ env.DISPLAY }}
           CTEST_OUTPUT_ON_FAILURE: "1"
         run: |
-          # Run the unit/integration test executable (it contains gated integration tests).
-          ctest --test-dir build --output-on-failure -R typr-io-unit-tests -C Release
+          # Run the integration test executable (built with TYPR_IO_BUILD_INTEGRATION_TESTS=ON).
+          ctest --test-dir build --output-on-failure -R typr-io-integration-tests -C Release
 
       - name: Upload test logs (always)
         if: always()

@@ -25,14 +25,18 @@ if(NOT TARGET Catch2::Catch2WithMain)
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
         GIT_TAG v3.4.0
     )
-    # This makes the Catch2 targets available (Catch2::Catch2, Catch2::Catch2WithMain)
+    # This makes the Catch2 targets available (Catch2::Catch2WithMain)
     FetchContent_MakeAvailable(catch2)
 endif()
 
-# Unit test executable
+# Optional: integration tests are interactive / long-running and should be
+# separated from the regular unit test binary. Enable them with:
+#   -DTYPR_IO_BUILD_INTEGRATION_TESTS=ON
+option(TYPR_IO_BUILD_INTEGRATION_TESTS "Build integration tests (interactive / long-running)" OFF)
+
+# Unit test executable (only lightweight, non-interactive tests)
 add_executable(typr-io-unit-tests
     test_key_utils.cpp
-    test_integration_sender.cpp
 )
 
 target_link_libraries(typr-io-unit-tests
@@ -47,3 +51,25 @@ target_compile_features(typr-io-unit-tests PRIVATE cxx_std_20)
 # Register with CTest
 enable_testing()
 add_test(NAME typr-io-unit-tests COMMAND typr-io-unit-tests)
+# Label the unit test so runners can select it explicitly if desired
+set_property(TEST typr-io-unit-tests PROPERTY LABELS unit)
+
+# Optional integration test executable (built when TYPR_IO_BUILD_INTEGRATION_TESTS=ON)
+if(TYPR_IO_BUILD_INTEGRATION_TESTS)
+    add_executable(typr-io-integration-tests
+        test_integration_sender.cpp
+    )
+
+    target_link_libraries(typr-io-integration-tests
+        PRIVATE
+            typr::io
+            Catch2::Catch2WithMain
+    )
+
+    # Ensure consistent language standard
+    target_compile_features(typr-io-integration-tests PRIVATE cxx_std_20)
+
+    add_test(NAME typr-io-integration-tests COMMAND typr-io-integration-tests)
+    # Mark the test with a label so runners can select it explicitly if desired
+    set_property(TEST typr-io-integration-tests PROPERTY LABELS integration)
+endif()
