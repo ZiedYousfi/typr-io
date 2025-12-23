@@ -272,7 +272,7 @@ jobs:
 
           while (-not $installed -and $attempt -lt $maxAttempts) {
             $attempt++
-            Write-Host "Attempt #$attempt: Installing CMake via Chocolatey..."
+            Write-Host "Attempt #${attempt}: Installing CMake via Chocolatey..."
             choco install -y cmake --install-arguments '"/l*v C:\cmake.install_msi_install.log"' --no-progress
 
             if ($LASTEXITCODE -ne 0) {
@@ -286,7 +286,7 @@ jobs:
               break
             }
 
-            Write-Host "Install attempt #$attempt failed; sleeping before retry..."
+            Write-Host "Install attempt #${attempt} failed; sleeping before retry..."
             Start-Sleep -Seconds (5 * $attempt)
           }
 
@@ -369,7 +369,7 @@ jobs:
 
           while (-not $installed -and $attempt -lt $maxAttempts) {
             $attempt++
-            Write-Host "Attempt #$attempt: Installing CMake via Chocolatey..."
+            Write-Host "Attempt #${attempt}: Installing CMake via Chocolatey..."
             choco install -y cmake --install-arguments '"/l*v C:\cmake.install_msi_install.log"' --no-progress
 
             if ($LASTEXITCODE -ne 0) {
@@ -383,7 +383,7 @@ jobs:
               break
             }
 
-            Write-Host "Install attempt #$attempt failed; sleeping before retry..."
+            Write-Host "Install attempt #${attempt} failed; sleeping before retry..."
             Start-Sleep -Seconds (5 * $attempt)
           }
 
