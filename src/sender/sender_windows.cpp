@@ -146,6 +146,20 @@ struct Sender::Impl {
     setIfMissing(Key::F19, VK_F19);
     setIfMissing(Key::F20, VK_F20);
 
+    // Top-row numbers (unshifted)
+    // Ensure top-row numeric keys that may be layout-dependent still have a
+    // sensible fallback mapping so callers using Key::NumX can inject digits.
+    setIfMissing(Key::Num0, static_cast<WORD>('0'));
+    setIfMissing(Key::Num1, static_cast<WORD>('1'));
+    setIfMissing(Key::Num2, static_cast<WORD>('2'));
+    setIfMissing(Key::Num3, static_cast<WORD>('3'));
+    setIfMissing(Key::Num4, static_cast<WORD>('4'));
+    setIfMissing(Key::Num5, static_cast<WORD>('5'));
+    setIfMissing(Key::Num6, static_cast<WORD>('6'));
+    setIfMissing(Key::Num7, static_cast<WORD>('7'));
+    setIfMissing(Key::Num8, static_cast<WORD>('8'));
+    setIfMissing(Key::Num9, static_cast<WORD>('9'));
+
     // Numpad
     setIfMissing(Key::Numpad0, VK_NUMPAD0);
     setIfMissing(Key::Numpad1, VK_NUMPAD1);
