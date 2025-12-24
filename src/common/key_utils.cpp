@@ -543,7 +543,11 @@ TYPR_IO_API Key stringToKey(const std::string &input) {
     rev.emplace("agrave", Key::A);
     rev.emplace("ugrave", Key::U);
     rev.emplace("ccedilla", Key::C);
-    rev.emplace("oe", Key::O);
+    // 'OE' is present as a canonical key (lowercased -> "oe"). Some systems
+    // emit "oe" to mean the letter 'o' rather than the ligature key; ensure
+    // that the common alias overrides the canonical mapping so "oe" maps to
+    // Key::O as tests expect.
+    rev.insert_or_assign("oe", Key::O);
     rev.emplace("mu", Key::Mu);
 
     // Misc control / text aliases
