@@ -370,11 +370,20 @@ private:
     xkb_keysym_t sym = xkb_state_key_get_one_sym(xkbState, xkbKey);
     char32_t codepoint = 0;
     if (pressed) {
-      // Compute and stash the codepoint for this key so that it can be
-      // delivered on key-release events (many applications deliver the
-      // resulting character on release).
-      codepoint = static_cast<char32_t>(xkb_keysym_to_utf32(sym));
-      pendingCodepoints[keycode] = codepoint;
+      // Compute codepoint for this key on press. Only stash printable
+      // characters (non-control). Control characters (e.g., Enter/Backspace)
+      // should not be delivered as a non-zero cp; they are handled via Key.
+      char32_t cp = static_cast<char32_t>(xkb_keysym_to_utf32(sym));
+      // Treat as printable if >= 0x20 and not DEL (0x7F). This is a simple,
+      // conservative heuristic that covers typical keyboard input.
+      if (cp >= 0x20 && cp != 0x7F) {
+        pendingCodepoints[keycode] = cp;
+      } else {
+        // Ensure no stale mapping remains for this key
+        auto it = pendingCodepoints.find(keycode);
+        if (it != pendingCodepoints.end())
+          pendingCodepoints.erase(it);
+      }
     } else {
       // Deliver any codepoint we previously computed at press time for this
       // key. This ensures callbacks observing only key-release events still
