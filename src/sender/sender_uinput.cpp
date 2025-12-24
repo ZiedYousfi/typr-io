@@ -2,6 +2,10 @@
 
 #include <typr-io/sender.hpp>
 
+#include <algorithm>
+#include <cstdlib>
+#include <fstream>
+#include <cstdio>
 #include <chrono>
 #include <cstring>
 #include <errno.h>
