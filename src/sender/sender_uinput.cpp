@@ -133,20 +133,109 @@ struct Sender::Impl {
       TYPR_IO_LOG_ERROR("Sender (uinput): xkb_context_new() failed");
       return;
     }
-
-    // Try to get layout from environment or use system default
-    // XKB_DEFAULT_RULES, XKB_DEFAULT_MODEL, XKB_DEFAULT_LAYOUT, etc.
-    xkbKeymap =
-        xkb_keymap_new_from_names(xkbCtx, nullptr, XKB_KEYMAP_COMPILE_NO_FLAGS);
+  
+    // Try to detect the actual keyboard layout
+    struct xkb_rule_names names = {nullptr, nullptr, nullptr, nullptr, nullptr};
+    std::string detectedLayout = detectKeyboardLayout();
+    
+    if (!detectedLayout.empty()) {
+      names.layout = detectedLayout.c_str();
+      TYPR_IO_LOG_INFO("Sender (uinput): detected layout '%s'", 
+                       detectedLayout.c_str());
+    }
+  
+    xkbKeymap = xkb_keymap_new_from_names(xkbCtx, 
+        detectedLayout.empty() ? nullptr : &names, 
+        XKB_KEYMAP_COMPILE_NO_FLAGS);
+    
     if (!xkbKeymap) {
       TYPR_IO_LOG_ERROR("Sender (uinput): xkb_keymap_new_from_names() failed");
       return;
     }
-
+  
     xkbState = xkb_state_new(xkbKeymap);
     if (!xkbState) {
       TYPR_IO_LOG_ERROR("Sender (uinput): xkb_state_new() failed");
     }
+  }
+  
+  std::string detectKeyboardLayout() {
+    // 1. Check XKB_DEFAULT_LAYOUT environment variable
+    const char *envLayout = std::getenv("XKB_DEFAULT_LAYOUT");
+    if (envLayout && envLayout[0] != '\0') {
+      TYPR_IO_LOG_DEBUG("Sender (uinput): layout from XKB_DEFAULT_LAYOUT: %s", 
+                        envLayout);
+      return envLayout;
+    }
+  
+    // 2. Try to read /etc/default/keyboard (Debian/Ubuntu)
+    std::ifstream kbdFile("/etc/default/keyboard");
+    if (kbdFile.is_open()) {
+      std::string line;
+      while (std::getline(kbdFile, line)) {
+        // Look for XKBLAYOUT="fr" or XKBLAYOUT=fr
+        if (line.find("XKBLAYOUT") != std::string::npos) {
+          size_t eqPos = line.find('=');
+          if (eqPos != std::string::npos) {
+            std::string value = line.substr(eqPos + 1);
+            // Remove quotes and whitespace
+            value.erase(std::remove(value.begin(), value.end(), '"'), value.end());
+            value.erase(std::remove(value.begin(), value.end(), '\''), value.end());
+            value.erase(std::remove(value.begin(), value.end(), ' '), value.end());
+            // Handle multiple layouts (e.g., "fr,us") - take first
+            size_t commaPos = value.find(',');
+            if (commaPos != std::string::npos) {
+              value = value.substr(0, commaPos);
+            }
+            if (!value.empty()) {
+              TYPR_IO_LOG_DEBUG("Sender (uinput): layout from /etc/default/keyboard: %s", 
+                                value.c_str());
+              return value;
+            }
+          }
+        }
+      }
+    }
+  
+    // 3. Try localectl or setxkbmap -query via popen (optional, heavier)
+    FILE *pipe = popen("setxkbmap -query 2>/dev/null | grep layout | awk '{print $2}'", "r");
+    if (pipe) {
+      char buffer[64];
+      if (fgets(buffer, sizeof(buffer), pipe)) {
+        std::string layout(buffer);
+        // Remove trailing newline
+        layout.erase(std::remove(layout.begin(), layout.end(), '\n'), layout.end());
+        // Handle multiple layouts
+        size_t commaPos = layout.find(',');
+        if (commaPos != std::string::npos) {
+          layout = layout.substr(0, commaPos);
+        }
+        pclose(pipe);
+        if (!layout.empty()) {
+          TYPR_IO_LOG_DEBUG("Sender (uinput): layout from setxkbmap: %s", 
+                            layout.c_str());
+          return layout;
+        }
+      } else {
+        pclose(pipe);
+      }
+    }
+  
+    // 4. Check LANG/LC_ALL for hints (fallback heuristic)
+    const char *lang = std::getenv("LANG");
+    if (lang) {
+      std::string langStr(lang);
+      if (langStr.find("fr_") == 0) return "fr";
+      if (langStr.find("de_") == 0) return "de";
+      if (langStr.find("es_") == 0) return "es";
+      if (langStr.find("it_") == 0) return "it";
+      if (langStr.find("pt_") == 0) return "pt";
+      if (langStr.find("ru_") == 0) return "ru";
+      // Add more as needed
+    }
+  
+    TYPR_IO_LOG_DEBUG("Sender (uinput): could not detect layout, using system default");
+    return "";
   }
 
   void initKeyMap() {
