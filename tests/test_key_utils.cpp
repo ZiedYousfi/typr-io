@@ -115,18 +115,21 @@ TEST_CASE("Recognizes helpful aliases / synonyms", "[key_utils][aliases]") {
   REQUIRE(stringToKey("dot") == Key::Period);
   REQUIRE(stringToKey("period") == Key::Period);
 
-  // Additional single-character punctuation / shifted-symbol aliases
-  // commonly encountered on US-style keyboard layouts.
-  REQUIRE(stringToKey("@") == Key::Num2);
-  REQUIRE(stringToKey("#") == Key::Num3);
-  REQUIRE(stringToKey("!") == Key::Num1);
-  REQUIRE(stringToKey("$") == Key::Num4);
-  REQUIRE(stringToKey("%") == Key::Num5);
-  REQUIRE(stringToKey("^") == Key::Num6);
-  REQUIRE(stringToKey("&") == Key::Num7);
-  REQUIRE(stringToKey("*") == Key::Num8);
-  REQUIRE(stringToKey("(") == Key::Num9);
-  REQUIRE(stringToKey(")") == Key::Num0);
+  // Additional symbol aliases commonly encountered on US-style keyboard
+  // layouts. The implementation maps these to named symbol keys (e.g.,
+  // "@" -> Key::At) rather than their shifted numeric equivalents.
+  REQUIRE(stringToKey("@") == Key::At);
+  REQUIRE(stringToKey("hash") == Key::Hashtag);
+  REQUIRE(stringToKey("hashtag") == Key::Hashtag);
+  REQUIRE(stringToKey("pound") == Key::Hashtag);
+  REQUIRE(stringToKey("!") == Key::Exclamation);
+  REQUIRE(stringToKey("$") == Key::Dollar);
+  REQUIRE(stringToKey("percent") == Key::Percent);
+  REQUIRE(stringToKey("^") == Key::Caret);
+  REQUIRE(stringToKey("&") == Key::Ampersand);
+  REQUIRE(stringToKey("*") == Key::Asterisk);
+  REQUIRE(stringToKey("(") == Key::LeftParen);
+  REQUIRE(stringToKey(")") == Key::RightParen);
 
   REQUIRE(stringToKey("_") == Key::Minus);
   REQUIRE(stringToKey("+") == Key::Equal);
