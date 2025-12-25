@@ -1,10 +1,15 @@
 name: Release
 
-# Create a release when a tag starting with "V" is pushed (e.g. `V1.2.3`)
+# Create a release when a tag starting with "v" is pushed (e.g. `v1.2.3`)
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number"
+        required: true
   push:
     tags:
-      - 'V*'
+      - "v*"
 
 permissions:
   contents: write
