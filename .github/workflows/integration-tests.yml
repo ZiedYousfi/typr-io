@@ -87,6 +87,27 @@ jobs:
           name: integration-test-binary-${{ env.OS_NAME }}-${{ env.ARCH }}
           path: ${{ steps.find-integration-binary.outputs.path }}
 
+      - name: Find test-consumer binary (Unix)
+        id: find-consumer-binary
+        run: |
+          # Find the built test consumer executable and copy it to the workspace root
+          # so the uploaded artifact has a flat path (avoids nested directories like build/...).
+          found=$(find build -type f \( -name 'typr_io_consumer*' -o -name 'typr-io-test-consumer*' \) -print -quit || true)
+          if [ -n "$found" ]; then
+            bname=$(basename "$found")
+            cp "$found" "$bname"
+            echo "path=$bname" >> $GITHUB_OUTPUT
+          else
+            echo "path=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload test-consumer binary
+        if: steps.find-consumer-binary.outputs.path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-consumer-binary-${{ env.OS_NAME }}-${{ env.ARCH }}
+          path: ${{ steps.find-consumer-binary.outputs.path }}
+
   integration-ubuntu-arm64:
     name: Integration tests on ubuntu-24.04-arm (arm64)
     runs-on: ubuntu-24.04-arm
@@ -147,6 +168,27 @@ jobs:
         with:
           name: integration-test-binary-${{ env.OS_NAME }}-${{ env.ARCH }}
           path: ${{ steps.find-integration-binary.outputs.path }}
+
+      - name: Find test-consumer binary (Unix)
+        id: find-consumer-binary
+        run: |
+          # Find the built test consumer executable and copy it to the workspace root
+          # so the uploaded artifact has a flat path (avoids nested directories like build/...).
+          found=$(find build -type f \( -name 'typr_io_consumer*' -o -name 'typr-io-test-consumer*' \) -print -quit || true)
+          if [ -n "$found" ]; then
+            bname=$(basename "$found")
+            cp "$found" "$bname"
+            echo "path=$bname" >> $GITHUB_OUTPUT
+          else
+            echo "path=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload test-consumer binary
+        if: steps.find-consumer-binary.outputs.path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-consumer-binary-${{ env.OS_NAME }}-${{ env.ARCH }}
+          path: ${{ steps.find-consumer-binary.outputs.path }}
 
   # integration-macos-x64:
   #   name: Integration tests on macos-latest (x86_64)
@@ -251,6 +293,27 @@ jobs:
           name: integration-test-binary-${{ env.OS_NAME }}-${{ env.ARCH }}
           path: ${{ steps.find-integration-binary.outputs.path }}
 
+      - name: Find test-consumer binary (Unix)
+        id: find-consumer-binary
+        run: |
+          # Find the built test consumer executable and copy it to the workspace root
+          # so the uploaded artifact has a flat path (avoids nested directories like build/...).
+          found=$(find build -type f \( -name 'typr_io_consumer*' -o -name 'typr-io-test-consumer*' \) -print -quit || true)
+          if [ -n "$found" ]; then
+            bname=$(basename "$found")
+            cp "$found" "$bname"
+            echo "path=$bname" >> $GITHUB_OUTPUT
+          else
+            echo "path=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload test-consumer binary
+        if: steps.find-consumer-binary.outputs.path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-consumer-binary-${{ env.OS_NAME }}-${{ env.ARCH }}
+          path: ${{ steps.find-consumer-binary.outputs.path }}
+
   integration-windows-x64:
     name: Integration tests on windows-latest (x86_64)
     runs-on: windows-latest
@@ -349,6 +412,26 @@ jobs:
         with:
           name: integration-test-binary-${{ env.OS_NAME }}-${{ env.ARCH }}
           path: ${{ steps.find-integration-binary.outputs.path }}
+
+      - name: Find test-consumer binary (Windows)
+        id: find-consumer-binary
+        shell: pwsh
+        run: |
+          $found = Get-ChildItem -Path build -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'typr_io_consumer*.exe' -or $_.Name -like 'typr-io-test-consumer*.exe' } | Select-Object -First 1
+          if ($found) {
+            # Copy to workspace root so the uploaded artifact has a flat path
+            Copy-Item -Path $found.FullName -Destination $found.Name
+            Write-Output "path=$($found.Name)" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Output "path=" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Upload test-consumer binary
+        if: steps.find-consumer-binary.outputs.path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-consumer-binary-${{ env.OS_NAME }}-${{ env.ARCH }}
+          path: ${{ steps.find-consumer-binary.outputs.path }}
 
   integration-windows-arm64:
     name: Integration tests on windows-11-arm (arm64)
@@ -489,6 +572,21 @@ jobs:
                   ext="${bname##*.}"
                   if [ "$ext" = "$bname" ]; then
                     # No extension
+                    cp "$f" "release-assets/${name}"
+                  else
+                    cp "$f" "release-assets/${name}.${ext}"
+                  fi
+                fi
+              done
+
+              # Also include test-consumer binaries (uploaded as test-consumer-binary-*)
+              for f in "$d"/**/test-consumer-binary*; do
+                if [ -f "$f" ]; then
+                  os=$(basename "$d" | sed 's/^test-consumer-binary-//')
+                  name="typr-io-test-consumer-${os}"
+                  bname=$(basename "$f")
+                  ext="${bname##*.}"
+                  if [ "$ext" = "$bname" ]; then
                     cp "$f" "release-assets/${name}"
                   else
                     cp "$f" "release-assets/${name}.${ext}"
