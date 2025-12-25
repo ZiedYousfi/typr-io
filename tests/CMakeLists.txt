@@ -37,6 +37,7 @@ option(TYPR_IO_BUILD_INTEGRATION_TESTS "Build integration tests (interactive / l
 # Unit test executable (only lightweight, non-interactive tests)
 add_executable(typr-io-unit-tests
     test_key_utils.cpp
+    test_c_api.cpp
 )
 
 target_link_libraries(typr-io-unit-tests

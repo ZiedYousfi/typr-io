@@ -33,6 +33,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # Linux headers.
 set(TYPR_SOURCES
     src/common/key_utils.cpp
+    src/c_api.cpp
 )
 
 if(APPLE)
@@ -120,7 +121,7 @@ target_link_libraries(typr_io PRIVATE Threads::Threads)
 set_target_properties(typr_io PROPERTIES
   VERSION ${PROJECT_VERSION}
   SOVERSION ${PROJECT_VERSION_MAJOR}
-  PUBLIC_HEADER "include/typr-io/core.hpp;include/typr-io/sender.hpp;include/typr-io/listener.hpp"
+  PUBLIC_HEADER "include/typr-io/core.hpp;include/typr-io/sender.hpp;include/typr-io/listener.hpp;include/typr-io/c_api.h"
 )
 
 # Preferred public alias for consumers
@@ -186,6 +187,13 @@ if(TYPR_IO_BUILD_EXAMPLES)
         install(TARGETS typr-io-example RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     else()
         message(WARNING "TYPR_IO_BUILD_EXAMPLES enabled but examples/example.cpp was not found")
+    endif()
+
+    # Optional C example (useful for verifying the C API). Only add when present.
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/example_c.c")
+        add_executable(typr-io-example-c examples/example_c.c)
+        target_link_libraries(typr-io-example-c PRIVATE typr::io)
+        install(TARGETS typr-io-example-c RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()
 endif()
 
