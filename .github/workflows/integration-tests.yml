@@ -580,7 +580,9 @@ jobs:
               done
 
               # Also include test-consumer binaries (uploaded as test-consumer-binary-*)
-              for f in "$d"/**/test-consumer-binary*; do
+              # The uploaded artifact contains the consumer binary (e.g., typr_io_consumer or typr-io-test-consumer),
+              # so look for those filenames inside the downloaded artifact directory.
+              for f in "$d"/**/typr_io_consumer* "$d"/**/typr-io-test-consumer*; do
                 if [ -f "$f" ]; then
                   os=$(basename "$d" | sed 's/^test-consumer-binary-//')
                   name="typr-io-test-consumer-${os}"
