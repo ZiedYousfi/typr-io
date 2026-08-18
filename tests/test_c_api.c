@@ -221,9 +221,10 @@ static void test_windows_repeat_state(void) {
       (axidev_io_keyboard_key_with_modifier_t){AXIDEV_IO_KEY_SHIFT_LEFT,
                                                AXIDEV_IO_MOD_NONE},
       true));
-  TEST_CHECK_EQ_INT((int)axidev_io_windows_sender_repeat_count_for_tests(), 0);
+  TEST_CHECK_EQ_INT((int)axidev_io_windows_sender_repeat_count_for_tests(), 1);
   TEST_CHECK(axidev_io_keyboard_key_up((axidev_io_keyboard_key_with_modifier_t){
       AXIDEV_IO_KEY_SHIFT_LEFT, AXIDEV_IO_MOD_NONE}));
+  TEST_CHECK_EQ_INT((int)axidev_io_windows_sender_repeat_count_for_tests(), 0);
 
   TEST_CHECK(axidev_io_keyboard_key_down(
       (axidev_io_keyboard_key_with_modifier_t){AXIDEV_IO_KEY_A,
