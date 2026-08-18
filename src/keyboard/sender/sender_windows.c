@@ -223,22 +223,6 @@ static void axidev_io_windows_repeat_remove_cancelled_locked(
   }
 }
 
-static bool axidev_io_windows_key_is_modifier(axidev_io_keyboard_key_t key) {
-  switch (key) {
-  case AXIDEV_IO_KEY_SHIFT_LEFT:
-  case AXIDEV_IO_KEY_SHIFT_RIGHT:
-  case AXIDEV_IO_KEY_CTRL_LEFT:
-  case AXIDEV_IO_KEY_CTRL_RIGHT:
-  case AXIDEV_IO_KEY_ALT_LEFT:
-  case AXIDEV_IO_KEY_ALT_RIGHT:
-  case AXIDEV_IO_KEY_SUPER_LEFT:
-  case AXIDEV_IO_KEY_SUPER_RIGHT:
-    return true;
-  default:
-    return false;
-  }
-}
-
 static uint64_t axidev_io_windows_monotonic_time_ns(void) {
   return axidev_io_monotonic_time_ms() * 1000000ull;
 }
@@ -723,7 +707,7 @@ axidev_io_result axidev_io_keyboard_sender_key_down_internal(
     return result;
   }
 
-  if (!repeat || axidev_io_windows_key_is_modifier(resolved_key)) {
+  if (!repeat) {
     result = axidev_io_keyboard_sender_hold_modifier_internal(mods);
     if (result != AXIDEV_IO_RESULT_OK) {
       return result;
