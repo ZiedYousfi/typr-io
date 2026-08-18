@@ -21,6 +21,7 @@ static void axidev_io_context_init_once(void) {
   axidev_io_mutex_init(&runtime->error_lock);
   axidev_io_global->log_level = AXIDEV_IO_LOG_LEVEL_INFO;
   axidev_io_keyboard_reset_public_state();
+  axidev_io_mouse_reset_public_state();
 }
 
 void axidev_io_context_ensure_runtime(void) {
@@ -160,4 +161,9 @@ void axidev_io_keyboard_reset_public_state(void) {
   axidev_io_keyboard_reset_public_listener_state();
   axidev_io_keyboard_reset_public_keymap_state();
   axidev_io_global->keyboard.backend_type = AXIDEV_IO_BACKEND_UNKNOWN;
+}
+
+void axidev_io_mouse_reset_public_state(void) {
+  memset(&axidev_io_global->mouse, 0, sizeof(axidev_io_global->mouse));
+  axidev_io_global->mouse.backend_type = AXIDEV_IO_BACKEND_UNKNOWN;
 }

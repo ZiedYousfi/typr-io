@@ -38,6 +38,7 @@ extern "C" {
 #define AXIDEV_IO_KEYBOARD_SENDER_STORAGE_SIZE 4096u
 #define AXIDEV_IO_KEYBOARD_LISTENER_STORAGE_SIZE 16384u
 #define AXIDEV_IO_KEYBOARD_KEYMAP_STORAGE_SIZE 8192u
+#define AXIDEV_IO_MOUSE_STORAGE_SIZE 4096u
 #define AXIDEV_IO_GLOBAL_PRIVATE_STORAGE_SIZE 2048u
 
 typedef union axidev_io_keyboard_sender_storage_t {
@@ -54,6 +55,11 @@ typedef union axidev_io_keyboard_keymap_storage_t {
   max_align_t _align;
   unsigned char bytes[AXIDEV_IO_KEYBOARD_KEYMAP_STORAGE_SIZE];
 } axidev_io_keyboard_keymap_storage_t;
+
+typedef union axidev_io_mouse_storage_t {
+  max_align_t _align;
+  unsigned char bytes[AXIDEV_IO_MOUSE_STORAGE_SIZE];
+} axidev_io_mouse_storage_t;
 
 typedef union axidev_io_global_private_storage_t {
   max_align_t _align;
@@ -356,6 +362,29 @@ typedef void (*axidev_io_keyboard_listener_cb)(
     uint32_t codepoint, axidev_io_keyboard_key_with_modifier_t key_mod,
     bool pressed, void *user_data);
 
+typedef uint16_t axidev_io_mouse_button_t;
+
+enum {
+  AXIDEV_IO_MOUSE_BUTTON_NONE = 0x0000,
+  AXIDEV_IO_MOUSE_BUTTON_LEFT = 0x0001,
+  AXIDEV_IO_MOUSE_BUTTON_RIGHT = 0x0002,
+  AXIDEV_IO_MOUSE_BUTTON_MIDDLE = 0x0004,
+  AXIDEV_IO_MOUSE_BUTTON_BACK = 0x0008,
+  AXIDEV_IO_MOUSE_BUTTON_FORWARD = 0x0010
+};
+
+typedef struct axidev_io_mouse_state_t {
+  int32_t x;
+  int32_t y;
+  axidev_io_mouse_button_t buttons;
+  double scroll_x;
+  double scroll_y;
+  uint64_t timestamp_ms;
+} axidev_io_mouse_state_t;
+
+typedef void (*axidev_io_mouse_listener_cb)(
+    const axidev_io_mouse_state_t *state, void *user_data);
+
 typedef struct axidev_io_keyboard_sender_context {
   bool initialized;
   bool ready;
@@ -386,6 +415,14 @@ typedef struct axidev_io_keyboard_context {
   axidev_io_keyboard_keymap_context keymap;
 } axidev_io_keyboard_context;
 
+typedef struct axidev_io_mouse_context {
+  bool initialized;
+  bool is_listening;
+  axidev_io_keyboard_backend_type_t backend_type;
+  axidev_io_mouse_state_t state;
+  axidev_io_mouse_storage_t storage;
+} axidev_io_mouse_context;
+
 typedef uint8_t axidev_io_log_level_t;
 
 enum {
@@ -399,6 +436,7 @@ typedef struct axidev_io_global_context {
   axidev_io_log_level_t log_level;
   char *last_error;
   axidev_io_keyboard_context keyboard;
+  axidev_io_mouse_context mouse;
   axidev_io_global_private_storage_t private_storage;
 } axidev_io_global_context;
 
@@ -434,6 +472,13 @@ AXIDEV_IO_API bool axidev_io_listener_start(axidev_io_keyboard_listener_cb cb,
                                             void *user_data);
 AXIDEV_IO_API void axidev_io_listener_stop(void);
 AXIDEV_IO_API bool axidev_io_listener_is_listening(void);
+
+AXIDEV_IO_API bool axidev_io_mouse_poll(axidev_io_mouse_state_t *out_state);
+AXIDEV_IO_API bool
+axidev_io_mouse_listener_start(axidev_io_mouse_listener_cb cb,
+                               void *user_data);
+AXIDEV_IO_API void axidev_io_mouse_listener_stop(void);
+AXIDEV_IO_API bool axidev_io_mouse_listener_is_listening(void);
 
 AXIDEV_IO_API char *
 axidev_io_keyboard_key_to_string(axidev_io_keyboard_key_t key);

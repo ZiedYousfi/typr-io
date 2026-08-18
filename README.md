@@ -1,7 +1,7 @@
 # axidev-io
 
-`axidev-io` is a C library for keyboard input injection and global keyboard
-listening on Windows and Linux.
+`axidev-io` is a C library for keyboard input injection, global keyboard
+listening, and mouse cursor/button observation on Windows and Linux.
 
 ## Build
 
@@ -62,12 +62,36 @@ int main(void) {
 }
 ```
 
+Mouse polling and listening use the same single global runtime:
+
+```c
+static void on_mouse(const axidev_io_mouse_state_t *state, void *user_data) {
+  printf("Mouse: x=%d, y=%d, buttons=%u\n",
+         state->x, state->y, state->buttons);
+}
+
+int main(void) {
+  axidev_io_mouse_state_t state;
+  axidev_io_mouse_poll(&state);
+
+  if (!axidev_io_mouse_listener_start(on_mouse, NULL)) {
+    return 1;
+  }
+
+  axidev_io_mouse_listener_stop();
+  return 0;
+}
+```
+
 ## Notes
 
 - Normal sender calls do not take sender handles, listener handles, or context
   handles.
 - Shared runtime state lives in the single exported `axidev_io_global`
   pointer.
+- Mouse callbacks report cursor/button state snapshots. On Linux, libinput
+  does not expose the compositor cursor position directly, so the library tracks
+  cursor position from observed pointer events.
 - Printable text sending prefers layout-resolved key sequences; explicit
   `key_down`, `key_up`, and `tap` remain available for low-level control.
 - `axidev_io_keyboard_key_down(key_mod, true)` requests backend-managed repeat

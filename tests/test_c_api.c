@@ -26,6 +26,12 @@ static void noop_listener_cb(uint32_t codepoint,
   (void)user_data;
 }
 
+static void noop_mouse_listener_cb(const axidev_io_mouse_state_t *state,
+                                   void *user_data) {
+  (void)state;
+  (void)user_data;
+}
+
 static void test_conversion_helpers(void) {
   char *text;
   axidev_io_keyboard_key_with_modifier_t parsed;
@@ -259,6 +265,38 @@ static void test_listener_lifecycle(void) {
   }
 }
 
+static void test_mouse_api_lifecycle(void) {
+  axidev_io_mouse_state_t state;
+  char *error_text;
+  bool started;
+
+  TEST_CHECK(!axidev_io_mouse_poll(NULL));
+  error_text = axidev_io_get_last_error();
+  TEST_CHECK(error_text != NULL);
+  axidev_io_free_string(error_text);
+
+  memset(&state, 0, sizeof(state));
+  TEST_CHECK(axidev_io_mouse_poll(&state));
+  TEST_CHECK(state.timestamp_ms != 0);
+
+  TEST_CHECK(!axidev_io_mouse_listener_start(NULL, NULL));
+  error_text = axidev_io_get_last_error();
+  TEST_CHECK(error_text != NULL);
+  axidev_io_free_string(error_text);
+
+  started = axidev_io_mouse_listener_start(noop_mouse_listener_cb, NULL);
+  if (started) {
+    TEST_CHECK(axidev_io_mouse_listener_is_listening());
+    axidev_io_mouse_listener_stop();
+    TEST_CHECK(!axidev_io_mouse_listener_is_listening());
+  } else {
+    error_text = axidev_io_get_last_error();
+    if (error_text != NULL) {
+      axidev_io_free_string(error_text);
+    }
+  }
+}
+
 int main(void) {
   TEST_RUN(test_conversion_helpers);
 #if defined(__linux__)
@@ -269,5 +307,6 @@ int main(void) {
   TEST_RUN(test_windows_repeat_state);
 #endif
   TEST_RUN(test_listener_lifecycle);
+  TEST_RUN(test_mouse_api_lifecycle);
   return g_axidev_test_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

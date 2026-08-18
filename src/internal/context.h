@@ -35,6 +35,7 @@ void axidev_io_keyboard_reset_public_sender_state(void);
 void axidev_io_keyboard_reset_public_listener_state(void);
 void axidev_io_keyboard_reset_public_keymap_state(void);
 void axidev_io_keyboard_reset_public_state(void);
+void axidev_io_mouse_reset_public_state(void);
 
 static inline void *axidev_io_sender_storage_ptr(void) {
   return (void *)axidev_io_global->keyboard.sender.storage.bytes;
@@ -46,6 +47,10 @@ static inline void *axidev_io_listener_storage_ptr(void) {
 
 static inline void *axidev_io_keymap_storage_ptr(void) {
   return (void *)axidev_io_global->keyboard.keymap.storage.bytes;
+}
+
+static inline void *axidev_io_mouse_storage_ptr(void) {
+  return (void *)axidev_io_global->mouse.storage.bytes;
 }
 
 static inline axidev_io_keyboard_sender_context *
@@ -61,6 +66,10 @@ axidev_io_listener_public_context(void) {
 static inline axidev_io_keyboard_keymap_context *
 axidev_io_keymap_public_context(void) {
   return &axidev_io_global->keyboard.keymap;
+}
+
+static inline axidev_io_mouse_context *axidev_io_mouse_public_context(void) {
+  return &axidev_io_global->mouse;
 }
 
 static inline bool

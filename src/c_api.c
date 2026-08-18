@@ -11,6 +11,7 @@
 #include "keyboard/common/keymap_internal.h"
 #include "keyboard/listener/listener_internal.h"
 #include "keyboard/sender/sender_internal.h"
+#include "mouse/mouse_internal.h"
 
 static void axidev_io_report_result(const char *function_name,
                                     axidev_io_result result) {
@@ -438,6 +439,54 @@ AXIDEV_IO_API void axidev_io_listener_stop(void) {
 AXIDEV_IO_API bool axidev_io_listener_is_listening(void) {
   axidev_io_context_ensure_runtime();
   return axidev_io_global->keyboard.listener.is_listening;
+}
+
+AXIDEV_IO_API bool axidev_io_mouse_poll(axidev_io_mouse_state_t *out_state) {
+  axidev_io_result result;
+
+  axidev_io_context_ensure_runtime();
+  axidev_io_clear_last_error_internal();
+  if (out_state == NULL) {
+    axidev_io_report_result("axidev_io_mouse_poll",
+                            AXIDEV_IO_RESULT_INVALID_ARGUMENT);
+    return false;
+  }
+
+  axidev_io_context_lock();
+  result = axidev_io_mouse_poll_internal(out_state);
+  if (result != AXIDEV_IO_RESULT_OK) {
+    axidev_io_report_result("axidev_io_mouse_poll", result);
+  }
+  axidev_io_context_unlock();
+  return result == AXIDEV_IO_RESULT_OK;
+}
+
+AXIDEV_IO_API bool
+axidev_io_mouse_listener_start(axidev_io_mouse_listener_cb cb,
+                               void *user_data) {
+  axidev_io_result result;
+
+  axidev_io_context_ensure_runtime();
+  axidev_io_clear_last_error_internal();
+  axidev_io_context_lock();
+  result = axidev_io_mouse_listener_start_internal(cb, user_data);
+  if (result != AXIDEV_IO_RESULT_OK) {
+    axidev_io_report_result("axidev_io_mouse_listener_start", result);
+  }
+  axidev_io_context_unlock();
+  return result == AXIDEV_IO_RESULT_OK;
+}
+
+AXIDEV_IO_API void axidev_io_mouse_listener_stop(void) {
+  axidev_io_context_ensure_runtime();
+  axidev_io_context_lock();
+  axidev_io_mouse_listener_stop_internal();
+  axidev_io_context_unlock();
+}
+
+AXIDEV_IO_API bool axidev_io_mouse_listener_is_listening(void) {
+  axidev_io_context_ensure_runtime();
+  return axidev_io_global->mouse.is_listening;
 }
 
 AXIDEV_IO_API char *

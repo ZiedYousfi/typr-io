@@ -32,6 +32,7 @@ COMMON_SOURCES = [
     Path("src/core/log.c"),
     Path("src/internal/utf.c"),
     Path("src/vendor/stb_ds_impl.c"),
+    Path("src/mouse/mouse_common.c"),
     Path("src/keyboard/common/key_utils.c"),
     Path("src/keyboard/common/keymap.c"),
 ]
@@ -158,6 +159,7 @@ def make_config(build_dir: Path) -> BuildConfig:
                 Path("src/keyboard/common/windows_keymap.c"),
                 Path("src/keyboard/sender/sender_windows.c"),
                 Path("src/keyboard/listener/listener_windows.c"),
+                Path("src/mouse/mouse_windows.c"),
             ]
         )
         platform_libs.extend(["-luser32", "-lkernel32"])
@@ -189,6 +191,7 @@ def make_config(build_dir: Path) -> BuildConfig:
                 Path("src/keyboard/common/linux_keysym.c"),
                 Path("src/keyboard/sender/sender_uinput.c"),
                 Path("src/keyboard/listener/listener_linux.c"),
+                Path("src/mouse/mouse_linux.c"),
             ]
         )
 

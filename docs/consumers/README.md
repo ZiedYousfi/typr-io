@@ -173,6 +173,19 @@ Example:
 - Callbacks may run on an internal background thread.
 - Keep listener callbacks thread-safe and short.
 
+## Mouse
+
+- `axidev_io_mouse_poll()` returns the latest cursor/button snapshot.
+- `axidev_io_mouse_listener_start()` starts the single global mouse listener.
+- Mouse callbacks receive an `axidev_io_mouse_state_t` with cursor position,
+  button bitmask, scroll deltas for the current event, and a monotonic
+  timestamp.
+- On Windows, polling reads the current cursor and button state from Win32.
+- On Linux, listening uses libinput on `seat0` and updates the tracked state
+  from pointer events. libinput does not expose the desktop compositor cursor
+  position directly, so polling returns the latest tracked state rather than
+  querying a compositor-specific pointer API.
+
 ## Errors And Logging
 
 - Failure details are available through `axidev_io_get_last_error()`.
@@ -183,7 +196,9 @@ Example:
 ## Platform Notes
 
 - Windows uses the Win32 keyboard APIs for injection and a low-level hook for
-  listening.
+  listening. Mouse observation uses Win32 cursor/button APIs and a low-level
+  mouse hook.
 - Linux injection uses `uinput`.
-- Linux listening uses `libinput` plus `xkbcommon`.
+- Linux keyboard listening uses `libinput` plus `xkbcommon`; mouse listening
+  uses `libinput`.
 - macOS is not supported in this repository.
