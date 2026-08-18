@@ -161,8 +161,8 @@ Example:
   again before starting new repeated holds.
 - On Linux/uinput, this flag does not change the existing backend behavior.
 - On Windows, repeated keys are tied to the key/modifier mapping resolved by
-  the original `key_down(..., true)` call. Modifier-only holds do not repeat.
-  Multiple non-modifier keys may repeat simultaneously.
+  the original `key_down(..., true)` call. Modifier keys follow the same
+  opt-in repeat behavior. Multiple keys may repeat simultaneously.
 - `axidev_io_keyboard_release_all_modifiers()` cancels active Windows emulated
   repeats before releasing modifiers.
 - Repeated synthetic Windows events may be observed by the global listener.
