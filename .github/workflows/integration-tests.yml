@@ -18,7 +18,7 @@ jobs:
     name: Build integration binaries (Ubuntu x64)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/build-linux
         with:
           arch: x64
@@ -31,7 +31,7 @@ jobs:
     name: Build integration binaries (Windows x64)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/build-windows-mingw
         with:
           arch: x64
@@ -51,10 +51,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download all workflow artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
         continue-on-error: true
@@ -131,37 +131,16 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "name=Integration Test Binaries - $TAG" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub release
+      - name: Create GitHub release and upload assets
         if: steps.check-assets.outputs.has_assets == 'true'
-        id: create-release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release-tag.outputs.tag }}
-          release_name: ${{ steps.release-tag.outputs.name }}
+          name: ${{ steps.release-tag.outputs.name }}
           body: |
             Manually triggered integration test binaries for various platforms.
           draft: false
           prerelease: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload release assets
-        if: steps.check-assets.outputs.has_assets == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          upload_url="${{ steps.create-release.outputs.upload_url }}"
-          upload_url="${upload_url%\{*}"
-          for asset in release-assets/*; do
-            if [ ! -f "$asset" ]; then
-              continue
-            fi
-            name=$(basename "$asset")
-            echo "Uploading $name"
-            curl -sS -X POST \
-              -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"$asset" \
-              "${upload_url}?name=${name}"
-          done
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          overwrite_files: true

@@ -22,7 +22,7 @@ jobs:
     name: Build & package (Ubuntu x64)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/build-linux
         with:
           arch: x64
@@ -33,7 +33,7 @@ jobs:
     name: Build & package (Windows x64)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/build-windows-mingw
         with:
           arch: x64
@@ -47,9 +47,9 @@ jobs:
       - build-ubuntu-x64
       - build-windows-x64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -106,32 +106,12 @@ jobs:
           unzip -Z1 "$windows_asset" | grep -Fx 'LICENSE'
           unzip -Z1 "$windows_asset" | grep -Fx 'vendor/licenses/stb.txt'
 
-      - name: Create GitHub release
-        id: create-release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub release and upload assets
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.collect-assets.outputs.tag }}
-          release_name: ${{ steps.collect-assets.outputs.tag }}
-          commitish: ${{ github.sha }}
-
-      - name: Upload asset (linux x64)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.upload_url }}
-          asset_path: release-assets/axidev-io-${{ steps.collect-assets.outputs.tag }}-linux-x64.tar.gz
-          asset_name: axidev-io-${{ steps.collect-assets.outputs.tag }}-linux-x64.tar.gz
-          asset_content_type: application/gzip
-
-      - name: Upload asset (windows x64)
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create-release.outputs.upload_url }}
-          asset_path: release-assets/axidev-io-${{ steps.collect-assets.outputs.tag }}-windows-x64.zip
-          asset_name: axidev-io-${{ steps.collect-assets.outputs.tag }}-windows-x64.zip
-          asset_content_type: application/zip
+          name: ${{ steps.collect-assets.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          overwrite_files: true

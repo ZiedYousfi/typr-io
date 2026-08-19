@@ -44,7 +44,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v7
       with:
         python-version: "3.x"
 
@@ -137,14 +137,14 @@ runs:
 
     - name: Upload release package
       if: ${{ inputs.package-output == 'true' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: release-package-linux-${{ inputs.arch }}
         path: packages/*.tar.gz
 
     - name: Upload test binaries
       if: ${{ inputs.upload-binaries == 'true' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.artifact-name }}
         path: |
@@ -152,7 +152,7 @@ runs:
 
     - name: Upload integration test package
       if: ${{ inputs.upload-integration-package == 'true' }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.artifact-name }}
         path: |
