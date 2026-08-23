@@ -22,7 +22,6 @@ typedef struct axidev_io_windows_repeat_entry {
 } axidev_io_windows_repeat_entry;
 
 typedef struct axidev_io_windows_repeat_send {
-  axidev_io_keyboard_key_with_modifier_t request;
   axidev_io_keyboard_key_t resolved_key;
   int32_t keycode;
 } axidev_io_windows_repeat_send;
@@ -161,66 +160,6 @@ axidev_io_sender_send_raw_key(axidev_io_keyboard_key_t key, int32_t keycode,
 static axidev_io_windows_repeat_entry *
 axidev_io_windows_repeat_entries(axidev_io_keyboard_sender_impl *impl) {
   return (axidev_io_windows_repeat_entry *)impl->repeat_entries;
-}
-
-static void
-axidev_io_windows_repeat_remove_at(axidev_io_keyboard_sender_impl *impl,
-                                   size_t index);
-
-static bool
-axidev_io_windows_repeat_try_lock(axidev_io_keyboard_sender_impl *impl) {
-  if (!impl->repeat_lock_initialized) {
-    return false;
-  }
-  return TryEnterCriticalSection(&impl->repeat_lock.native) != 0;
-}
-
-static void axidev_io_windows_repeat_publish_cancel(
-    axidev_io_keyboard_sender_impl *impl,
-    axidev_io_keyboard_key_with_modifier_t request) {
-  atomic_store(&impl->repeat_cancel_mods, (int)request.mods);
-  atomic_store(&impl->repeat_cancel_key, (int)request.key);
-  atomic_store(&impl->repeat_sends_paused, true);
-  if (impl->repeat_wake_event != NULL) {
-    SetEvent((HANDLE)impl->repeat_wake_event);
-  }
-}
-
-static bool axidev_io_windows_repeat_is_cancelled(
-    axidev_io_keyboard_sender_impl *impl,
-    axidev_io_keyboard_key_with_modifier_t request) {
-  int key = atomic_load(&impl->repeat_cancel_key);
-  int mods = atomic_load(&impl->repeat_cancel_mods);
-  return key == (int)request.key && mods == (int)request.mods;
-}
-
-static void axidev_io_windows_repeat_clear_cancel(
-    axidev_io_keyboard_sender_impl *impl,
-    axidev_io_keyboard_key_with_modifier_t request) {
-  if (axidev_io_windows_repeat_is_cancelled(impl, request)) {
-    atomic_store(&impl->repeat_cancel_key, (int)AXIDEV_IO_KEY_UNKNOWN);
-    atomic_store(&impl->repeat_cancel_mods, (int)AXIDEV_IO_MOD_NONE);
-    atomic_store(&impl->repeat_sends_paused, false);
-  }
-}
-
-static void axidev_io_windows_repeat_remove_cancelled_locked(
-    axidev_io_keyboard_sender_impl *impl) {
-  size_t i = 0;
-  while (i < impl->repeat_len) {
-    axidev_io_windows_repeat_entry *entry =
-        &axidev_io_windows_repeat_entries(impl)[i];
-    if (axidev_io_windows_repeat_is_cancelled(impl, entry->request)) {
-      axidev_io_keyboard_key_with_modifier_t request = entry->request;
-      axidev_io_windows_repeat_remove_at(impl, i);
-      axidev_io_windows_repeat_clear_cancel(impl, request);
-      continue;
-    }
-    ++i;
-  }
-  if (impl->repeat_len == 0) {
-    atomic_store(&impl->repeat_active, false);
-  }
 }
 
 static uint64_t axidev_io_windows_monotonic_time_ns(void) {
@@ -370,15 +309,14 @@ static void axidev_io_windows_repeat_drain_entries(
     impl->repeat_entries = NULL;
     impl->repeat_len = 0;
     impl->repeat_cap = 0;
-    atomic_store(&impl->repeat_active, false);
-    atomic_store(&impl->repeat_sends_paused, false);
-    atomic_store(&impl->repeat_cancel_key, (int)AXIDEV_IO_KEY_UNKNOWN);
-    atomic_store(&impl->repeat_cancel_mods, (int)AXIDEV_IO_MOD_NONE);
     axidev_io_mutex_unlock(&impl->repeat_lock);
   }
 
   if (impl->repeat_wake_event != NULL) {
     SetEvent((HANDLE)impl->repeat_wake_event);
+  }
+  if (impl->repeat_idle_event != NULL) {
+    WaitForSingleObject((HANDLE)impl->repeat_idle_event, INFINITE);
   }
 
   *out_entries = entries;
@@ -428,8 +366,6 @@ static int axidev_io_windows_repeat_worker_main(void *user_data) {
       break;
     }
 
-    axidev_io_windows_repeat_remove_cancelled_locked(impl);
-
     if (impl->repeat_len == 0) {
       axidev_io_mutex_unlock(&impl->repeat_lock);
       WaitForSingleObject((HANDLE)impl->repeat_wake_event, INFINITE);
@@ -458,7 +394,6 @@ static int axidev_io_windows_repeat_worker_main(void *user_data) {
           &axidev_io_windows_repeat_entries(impl)[i];
 
       if (entry->next_fire_at_ns <= now_ns) {
-        due[due_count].request = entry->request;
         due[due_count].resolved_key = entry->resolved_key;
         due[due_count].keycode = entry->keycode;
         ++due_count;
@@ -473,20 +408,22 @@ static int axidev_io_windows_repeat_worker_main(void *user_data) {
 
     now_ns = axidev_io_windows_monotonic_time_ns();
     timeout_ms = axidev_io_windows_repeat_timeout_ms(now_ns, next_deadline_ns);
+    if (due_count != 0) {
+      ResetEvent((HANDLE)impl->repeat_idle_event);
+    }
     axidev_io_mutex_unlock(&impl->repeat_lock);
 
     for (i = 0; i < due_count; ++i) {
-      if (axidev_io_windows_repeat_is_cancelled(impl, due[i].request)) {
-        continue;
+      axidev_io_result result = axidev_io_sender_send_raw_key(
+          due[i].resolved_key, due[i].keycode, true);
+      if (result != AXIDEV_IO_RESULT_OK) {
+        AXIDEV_IO_LOG_ERROR("Windows repeat SendInput failed: %s",
+                            axidev_io_result_to_string(result));
       }
-      if (!atomic_load(&impl->repeat_sends_paused)) {
-        axidev_io_result result = axidev_io_sender_send_raw_key(
-            due[i].resolved_key, due[i].keycode, true);
-        if (result != AXIDEV_IO_RESULT_OK) {
-          AXIDEV_IO_LOG_ERROR("Windows repeat SendInput failed: %s",
-                              axidev_io_result_to_string(result));
-        }
-      }
+    }
+
+    if (due_count != 0) {
+      SetEvent((HANDLE)impl->repeat_idle_event);
     }
 
     WaitForSingleObject((HANDLE)impl->repeat_wake_event, timeout_ms);
@@ -502,11 +439,15 @@ axidev_io_windows_repeat_start_state(axidev_io_keyboard_sender_impl *impl) {
   if (impl->repeat_wake_event == NULL) {
     return AXIDEV_IO_RESULT_PLATFORM_ERROR;
   }
-  atomic_store(&impl->repeat_active, false);
-  atomic_store(&impl->repeat_sends_paused, false);
-  atomic_store(&impl->repeat_cancel_key, (int)AXIDEV_IO_KEY_UNKNOWN);
-  atomic_store(&impl->repeat_cancel_mods, (int)AXIDEV_IO_MOD_NONE);
+  impl->repeat_idle_event = CreateEventW(NULL, TRUE, TRUE, NULL);
+  if (impl->repeat_idle_event == NULL) {
+    CloseHandle((HANDLE)impl->repeat_wake_event);
+    impl->repeat_wake_event = NULL;
+    return AXIDEV_IO_RESULT_PLATFORM_ERROR;
+  }
   if (!axidev_io_mutex_init(&impl->repeat_lock)) {
+    CloseHandle((HANDLE)impl->repeat_idle_event);
+    impl->repeat_idle_event = NULL;
     CloseHandle((HANDLE)impl->repeat_wake_event);
     impl->repeat_wake_event = NULL;
     return AXIDEV_IO_RESULT_INTERNAL_ERROR;
@@ -517,6 +458,8 @@ axidev_io_windows_repeat_start_state(axidev_io_keyboard_sender_impl *impl) {
                                axidev_io_windows_repeat_worker_main, impl)) {
     axidev_io_mutex_destroy(&impl->repeat_lock);
     impl->repeat_lock_initialized = false;
+    CloseHandle((HANDLE)impl->repeat_idle_event);
+    impl->repeat_idle_event = NULL;
     CloseHandle((HANDLE)impl->repeat_wake_event);
     impl->repeat_wake_event = NULL;
     return AXIDEV_IO_RESULT_INTERNAL_ERROR;
@@ -538,10 +481,6 @@ axidev_io_windows_repeat_stop_state(axidev_io_keyboard_sender_impl *impl) {
     impl->repeat_entries = NULL;
     impl->repeat_len = 0;
     impl->repeat_cap = 0;
-    atomic_store(&impl->repeat_active, false);
-    atomic_store(&impl->repeat_sends_paused, false);
-    atomic_store(&impl->repeat_cancel_key, (int)AXIDEV_IO_KEY_UNKNOWN);
-    atomic_store(&impl->repeat_cancel_mods, (int)AXIDEV_IO_MOD_NONE);
     axidev_io_mutex_unlock(&impl->repeat_lock);
   }
 
@@ -562,6 +501,10 @@ axidev_io_windows_repeat_stop_state(axidev_io_keyboard_sender_impl *impl) {
   if (impl->repeat_wake_event != NULL) {
     CloseHandle((HANDLE)impl->repeat_wake_event);
     impl->repeat_wake_event = NULL;
+  }
+  if (impl->repeat_idle_event != NULL) {
+    CloseHandle((HANDLE)impl->repeat_idle_event);
+    impl->repeat_idle_event = NULL;
   }
 }
 
@@ -745,7 +688,6 @@ axidev_io_result axidev_io_keyboard_sender_key_down_internal(
     entry->next_fire_at_ns =
         axidev_io_windows_monotonic_time_ns() + sender->repeat_delay_ns;
     entry->interval_ns = sender->repeat_interval_ns;
-    atomic_store(&impl->repeat_active, true);
     SetEvent((HANDLE)impl->repeat_wake_event);
   } else {
     axidev_io_sender_send_raw_key(resolved_key, keycode, false);
@@ -763,10 +705,7 @@ axidev_io_result axidev_io_keyboard_sender_key_up_internal(
   axidev_io_keyboard_key_t resolved_key;
   axidev_io_result result;
   size_t repeat_index;
-
-  if (atomic_load(&impl->repeat_active)) {
-    axidev_io_windows_repeat_publish_cancel(impl, key_mod);
-  }
+  bool removed_repeat = false;
 
   result =
       axidev_io_sender_resolve_mapping(key_mod, &keycode, &mods, &resolved_key);
@@ -774,34 +713,26 @@ axidev_io_result axidev_io_keyboard_sender_key_up_internal(
     return result;
   }
 
+  if (impl->repeat_lock_initialized) {
+    axidev_io_mutex_lock(&impl->repeat_lock);
+    repeat_index = axidev_io_windows_repeat_find_request(impl, key_mod);
+    if (repeat_index != (size_t)-1) {
+      axidev_io_windows_repeat_remove_at(impl, repeat_index);
+      removed_repeat = true;
+      SetEvent((HANDLE)impl->repeat_wake_event);
+    }
+    axidev_io_mutex_unlock(&impl->repeat_lock);
+  }
+
+  if (removed_repeat && impl->repeat_idle_event != NULL) {
+    WaitForSingleObject((HANDLE)impl->repeat_idle_event, INFINITE);
+  }
+
   result = axidev_io_sender_send_raw_key(resolved_key, keycode, false);
   if (result != AXIDEV_IO_RESULT_OK) {
     return result;
   }
-  result = axidev_io_keyboard_sender_release_modifier_internal(mods);
-
-  if (atomic_load(&impl->repeat_active) &&
-      axidev_io_windows_repeat_try_lock(impl)) {
-    repeat_index = axidev_io_windows_repeat_find_request(impl, key_mod);
-    if (repeat_index != (size_t)-1) {
-      axidev_io_windows_repeat_remove_at(impl, repeat_index);
-      if (impl->repeat_len == 0) {
-        atomic_store(&impl->repeat_active, false);
-      }
-      axidev_io_windows_repeat_clear_cancel(impl, key_mod);
-      SetEvent((HANDLE)impl->repeat_wake_event);
-      axidev_io_mutex_unlock(&impl->repeat_lock);
-      return result;
-    }
-    if (impl->repeat_len == 0) {
-      atomic_store(&impl->repeat_active, false);
-    }
-    if (impl->repeat_len == 0) {
-      axidev_io_windows_repeat_clear_cancel(impl, key_mod);
-    }
-    axidev_io_mutex_unlock(&impl->repeat_lock);
-  }
-  return result;
+  return axidev_io_keyboard_sender_release_modifier_internal(mods);
 }
 
 axidev_io_result axidev_io_keyboard_sender_tap_internal(

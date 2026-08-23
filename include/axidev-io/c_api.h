@@ -7,10 +7,10 @@
 #include <stdint.h>
 
 #ifndef AXIDEV_IO_VERSION
-#define AXIDEV_IO_VERSION "0.8.0"
+#define AXIDEV_IO_VERSION "0.7.6"
 #define AXIDEV_IO_VERSION_MAJOR 0
-#define AXIDEV_IO_VERSION_MINOR 8
-#define AXIDEV_IO_VERSION_PATCH 0
+#define AXIDEV_IO_VERSION_MINOR 7
+#define AXIDEV_IO_VERSION_PATCH 6
 #endif
 
 #ifndef AXIDEV_IO_API

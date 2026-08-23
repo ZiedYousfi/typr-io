@@ -4,6 +4,51 @@
 
 #if defined(_WIN32)
 #include "keyboard/sender/sender_internal.h"
+
+typedef struct repeat_lock_test_context {
+  axidev_io_keyboard_sender_impl *sender;
+  HANDLE locked_event;
+  HANDLE release_event;
+} repeat_lock_test_context;
+
+typedef struct key_up_test_context {
+  axidev_io_keyboard_key_t key;
+  HANDLE started_event;
+  HANDLE done_event;
+  bool result;
+} key_up_test_context;
+
+static int hold_repeat_lock(void *user_data) {
+  repeat_lock_test_context *context = (repeat_lock_test_context *)user_data;
+
+  axidev_io_mutex_lock(&context->sender->repeat_lock);
+  SetEvent(context->locked_event);
+  WaitForSingleObject(context->release_event, INFINITE);
+  axidev_io_mutex_unlock(&context->sender->repeat_lock);
+  return 0;
+}
+
+static int release_key_on_thread(void *user_data) {
+  key_up_test_context *context = (key_up_test_context *)user_data;
+
+  SetEvent(context->started_event);
+  context->result = axidev_io_keyboard_key_up(
+      (axidev_io_keyboard_key_with_modifier_t){context->key,
+                                               AXIDEV_IO_MOD_NONE});
+  SetEvent(context->done_event);
+  return 0;
+}
+
+static void wait_for_repeat_count(size_t expected) {
+  int attempt;
+
+  for (attempt = 0; attempt < 40; ++attempt) {
+    if (axidev_io_windows_sender_repeat_count_for_tests() == expected) {
+      return;
+    }
+    Sleep(5);
+  }
+}
 #endif
 
 #if defined(__linux__)
@@ -242,6 +287,123 @@ static void test_windows_repeat_state(void) {
   axidev_io_keyboard_free();
   TEST_CHECK_EQ_INT((int)axidev_io_windows_sender_repeat_count_for_tests(), 0);
 }
+
+static void test_windows_repeat_release_ordering_for_keys(
+    axidev_io_keyboard_key_t ctrl_key,
+    axidev_io_keyboard_key_t shift_key) {
+  axidev_io_keyboard_sender_impl *sender;
+  repeat_lock_test_context lock_context;
+  key_up_test_context ctrl_release;
+  key_up_test_context letter_release;
+  axidev_io_thread lock_thread;
+  axidev_io_thread ctrl_thread;
+  axidev_io_thread letter_thread;
+
+  TEST_CHECK(axidev_io_keyboard_initialize());
+  TEST_CHECK(axidev_io_keyboard_key_down(
+      (axidev_io_keyboard_key_with_modifier_t){ctrl_key,
+                                               AXIDEV_IO_MOD_NONE},
+      true));
+  TEST_CHECK(axidev_io_keyboard_key_down(
+      (axidev_io_keyboard_key_with_modifier_t){shift_key,
+                                               AXIDEV_IO_MOD_NONE},
+      true));
+  TEST_CHECK(axidev_io_keyboard_key_down(
+      (axidev_io_keyboard_key_with_modifier_t){AXIDEV_IO_KEY_B,
+                                               AXIDEV_IO_MOD_NONE},
+      true));
+  TEST_CHECK_EQ_INT((int)axidev_io_windows_sender_repeat_count_for_tests(), 3);
+
+  sender = axidev_io_sender_impl_get();
+  memset(&lock_context, 0, sizeof(lock_context));
+  memset(&ctrl_release, 0, sizeof(ctrl_release));
+  memset(&letter_release, 0, sizeof(letter_release));
+  memset(&lock_thread, 0, sizeof(lock_thread));
+  memset(&ctrl_thread, 0, sizeof(ctrl_thread));
+  memset(&letter_thread, 0, sizeof(letter_thread));
+
+  lock_context.sender = sender;
+  lock_context.locked_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+  lock_context.release_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+  ctrl_release.key = ctrl_key;
+  ctrl_release.started_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+  ctrl_release.done_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+  letter_release.key = AXIDEV_IO_KEY_B;
+  letter_release.started_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+  letter_release.done_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+
+  TEST_CHECK(axidev_io_thread_create(&lock_thread, hold_repeat_lock,
+                                     &lock_context));
+  TEST_CHECK_EQ_INT(WaitForSingleObject(lock_context.locked_event, 1000),
+                    WAIT_OBJECT_0);
+  TEST_CHECK(axidev_io_thread_create(&ctrl_thread, release_key_on_thread,
+                                     &ctrl_release));
+  TEST_CHECK_EQ_INT(WaitForSingleObject(ctrl_release.started_event, 1000),
+                    WAIT_OBJECT_0);
+  (void)WaitForSingleObject(ctrl_release.done_event, 50);
+  TEST_CHECK(axidev_io_thread_create(&letter_thread, release_key_on_thread,
+                                     &letter_release));
+  TEST_CHECK_EQ_INT(WaitForSingleObject(letter_release.started_event, 1000),
+                    WAIT_OBJECT_0);
+  (void)WaitForSingleObject(letter_release.done_event, 50);
+
+  SetEvent(lock_context.release_event);
+  axidev_io_thread_join(&lock_thread);
+  axidev_io_thread_join(&ctrl_thread);
+  axidev_io_thread_join(&letter_thread);
+  TEST_CHECK(ctrl_release.result);
+  TEST_CHECK(letter_release.result);
+  wait_for_repeat_count(1);
+
+  /* Shift remains held; released Ctrl and B must leave repeat state. */
+  TEST_CHECK_EQ_INT((int)axidev_io_windows_sender_repeat_count_for_tests(), 1);
+  TEST_CHECK(axidev_io_keyboard_key_up(
+      (axidev_io_keyboard_key_with_modifier_t){shift_key,
+                                               AXIDEV_IO_MOD_NONE}));
+  wait_for_repeat_count(0);
+  TEST_CHECK_EQ_INT((int)axidev_io_windows_sender_repeat_count_for_tests(), 0);
+  TEST_CHECK((axidev_io_keyboard_active_modifiers() &
+              (AXIDEV_IO_MOD_CTRL | AXIDEV_IO_MOD_SHIFT)) == 0);
+
+  CloseHandle(lock_context.locked_event);
+  CloseHandle(lock_context.release_event);
+  CloseHandle(ctrl_release.started_event);
+  CloseHandle(ctrl_release.done_event);
+  CloseHandle(letter_release.started_event);
+  CloseHandle(letter_release.done_event);
+
+  /* Individual releases clean up any stale state after failed assertions. */
+  TEST_CHECK(axidev_io_keyboard_key_up(
+      (axidev_io_keyboard_key_with_modifier_t){ctrl_key,
+                                               AXIDEV_IO_MOD_NONE}));
+  TEST_CHECK(axidev_io_keyboard_key_up(
+      (axidev_io_keyboard_key_with_modifier_t){AXIDEV_IO_KEY_B,
+                                               AXIDEV_IO_MOD_NONE}));
+  axidev_io_keyboard_free();
+}
+
+static void test_windows_repeat_release_ordering(void) {
+  static const axidev_io_keyboard_key_t ctrl_keys[] = {
+      AXIDEV_IO_KEY_CTRL_LEFT,
+      AXIDEV_IO_KEY_CTRL_RIGHT,
+  };
+  static const axidev_io_keyboard_key_t shift_keys[] = {
+      AXIDEV_IO_KEY_SHIFT_LEFT,
+      AXIDEV_IO_KEY_SHIFT_RIGHT,
+  };
+  size_t ctrl_index;
+  size_t shift_index;
+
+  for (ctrl_index = 0; ctrl_index < sizeof(ctrl_keys) / sizeof(ctrl_keys[0]);
+       ++ctrl_index) {
+    for (shift_index = 0;
+         shift_index < sizeof(shift_keys) / sizeof(shift_keys[0]);
+         ++shift_index) {
+      test_windows_repeat_release_ordering_for_keys(ctrl_keys[ctrl_index],
+                                                    shift_keys[shift_index]);
+    }
+  }
+}
 #endif
 
 static void test_listener_lifecycle(void) {
@@ -306,6 +468,7 @@ int main(void) {
   TEST_RUN(test_sender_lifecycle_and_errors);
 #if defined(_WIN32)
   TEST_RUN(test_windows_repeat_state);
+  TEST_RUN(test_windows_repeat_release_ordering);
 #endif
   TEST_RUN(test_listener_lifecycle);
   TEST_RUN(test_mouse_api_lifecycle);

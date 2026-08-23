@@ -5,22 +5,17 @@
 #include "../../internal/thread.h"
 #include "../common/keymap_internal.h"
 
-#include <stdatomic.h>
-
 typedef struct axidev_io_keyboard_sender_impl {
 #ifdef _WIN32
   void *layout;
   void *repeat_entries;
   void *repeat_wake_event;
+  void *repeat_idle_event;
   axidev_io_mutex repeat_lock;
   axidev_io_thread repeat_worker;
   bool repeat_lock_initialized;
   bool repeat_worker_running;
   bool repeat_stop_worker;
-  atomic_bool repeat_active;
-  atomic_bool repeat_sends_paused;
-  atomic_int repeat_cancel_key;
-  atomic_int repeat_cancel_mods;
   size_t repeat_len;
   size_t repeat_cap;
 #elif defined(__linux__)
